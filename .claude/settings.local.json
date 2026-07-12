@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem C:\\\\CODE -Force | Select-Object Name, Mode, Length; Write-Output \"---python---\"; \\(Get-Command python -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell(python --version; python -c \"import yfinance; print\\('yfinance', yfinance.__version__\\)\" 2>$null; python -c \"import pandas; print\\('pandas', pandas.__version__\\)\" 2>$null)",
+      "PowerShell($py = Get-Command py -ErrorAction SilentlyContinue; if \\($py\\) { py --version } else { \"no py launcher\" }; $p3 = Get-Command python3 -ErrorAction SilentlyContinue; if\\($p3\\){$p3.Source})",
+      "PowerShell($f = \"C:\\\\CODE\\\\data\\\\HGINFRA.NS_1m.csv\"; $lines = Get-Content $f; \"rows: $\\($lines.Count\\)\"; \"--- first data line ---\"; $lines[3]; \"--- last data line ---\"; $lines[-1])",
+      "PowerShell(cd C:\\\\CODE; foreach \\($t in \"NLCINDIA.NS\",\"IRB.NS\",\"RVNL.NS\",\"MRTX.BO\",\"CNL.NS\"\\) { $l = Get-Content \"data\\\\$\\($t\\)_1m.csv\"; \"{0,-14} rows={1,5}  first={2}  last={3}\" -f $t,$l.Count,$l[1].Substring\\(0,16\\),$l[-1].Substring\\(0,16\\) })",
+      "PowerShell(cd C:\\\\CODE; $l = Get-Content \"data\\\\HGINFRA.NS_1m.csv\" | Select-String \"2026-06-08 09:1[5-9]|2026-06-08 09:2[0-2]\"; $l | ForEach-Object { $_.Line })",
+      "PowerShell($f = \"C:\\\\Users\\\\parmp\\\\.claude\\\\projects\\\\C--CODE\\\\d5fd5dbe-ab72-417a-aedb-7b6fae37478d\\\\tool-results\\\\bz2yq4w1v.txt\"; $lines = Get-Content $f; $i = \\($lines | Select-String \"Done. Summary:\"\\).LineNumber; if \\($i\\) { $lines[\\($i-1\\)..\\($lines.Count-1\\)] })",
+      "PowerShell(cd C:\\\\CODE; foreach \\($t in \"DIXON.NS\",\"NLCINDIA.NS\",\"HGINFRA.NS\",\"INFY.NS\",\"COALINDIA.NS\"\\) { $l = Get-Content \"data\\\\$\\($t\\)_1m.csv\"; \"{0,-14} rows={1,5}  first={2}  last={3}\" -f $t,$l.Count,$l[1].Substring\\(0,16\\),$l[-1].Substring\\(0,16\\) })",
+      "PowerShell(cd C:\\\\CODE; python fetch_1min_data.py --from-file 2>&1 | Select-Object -Last 3; \"--- checking 10 Jun coverage ---\"; foreach \\($t in \"DIXON.NS\",\"WELCORP.NS\",\"QPOWER.NS\",\"HGS.NS\",\"NLCINDIA.NS\"\\) { $p=\"data\\\\$\\($t\\)_1m.csv\"; if \\(Test-Path $p\\) { $l=Get-Content $p; \"{0,-14} last={1}\" -f $t,$l[-1].Substring\\(0,16\\) } })"
+    ]
+  }
+}
