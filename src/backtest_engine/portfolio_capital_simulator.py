@@ -31,6 +31,7 @@ def run_portfolio_simulation(
     strategy_mode: str = "Strategy A",  # "Strategy A" (Liquidity First) or "Strategy B" (Nifty First)
     entry_mode_filter: str = "Mode B (C1 High + 0.1%)",  # Best entry mode
     scenario_filter: str = "Scenario 1 (Green & Close > C1 High)",  # Best scenario
+    target_rr_filter: float = 3.0,  # Target RR (default 3.0, or 2.0 for 1:2 RR)
 ) -> dict:
     if not MASTER_TRADES_CSV.exists():
         raise FileNotFoundError(f"Master trade log not found at {MASTER_TRADES_CSV}")

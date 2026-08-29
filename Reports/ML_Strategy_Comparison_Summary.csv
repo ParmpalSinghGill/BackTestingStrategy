@@ -1,0 +1,5 @@
+Strategy Variant,Executed Win Rate (%),Executed Trades,Executed Wins,Executed Losses,Overall Win Rate (%),Overall Signals,Final Equity (INR),CAGR (%),Max DD (%),Profit Factor
+Baseline Unfiltered (1:3 RR),42.25%,"32,220","13,614","18,606",44.39%,"66,522","22,336,000",38.40%,25.51%,2.20
+ML-Filtered (P >= 0.50),57.83%,"3,206","1,854","1,352",52.50%,"6,377","4,310,000",25.37%,14.77%,4.11
+ML-Filtered (P >= 0.52),56.39%,"2,190","1,235",955,46.96%,"4,772","2,850,000",22.30%,10.43%,3.88
+ML-Filtered (P >= 0.55),54.59%,"1,024",559,465,44.57%,"3,592","1,312,000",16.73%,14.77%,3.61
