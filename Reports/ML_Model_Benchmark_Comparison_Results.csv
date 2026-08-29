@@ -1,0 +1,5 @@
+ML Model Architecture,Executed Win Rate (%),Executed Trades,Overall Win Rate (%),Overall Signals,Net Final Equity (INR),Net Return (%),Net CAGR (2010-2026),Max DD (%),Total Taxes Paid (INR)
+Unfiltered Baseline (Non-ML),54.29%,"43,147",55.35%,"66,691","INR 24,161,869",+24061.87%,39.06%,28.89%,"INR 2,818,744"
+Random Forest (P >= 0.50),56.40%,"40,985",56.87%,"49,069","INR 25,257,335",+25157.34%,39.43%,10.46%,"INR 2,976,679"
+XGBoost (P >= 0.50),56.87%,"34,146",57.36%,"42,733","INR 21,475,596",+21375.60%,38.07%,10.46%,"INR 2,558,441"
+MLP Neural Network (P >= 0.50),55.33%,"25,985",56.34%,"37,168","INR 15,337,808",+15237.81%,35.31%,14.66%,"INR 1,793,926"

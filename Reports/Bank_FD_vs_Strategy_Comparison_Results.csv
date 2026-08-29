@@ -1,0 +1,5 @@
+Investment Vehicle / Strategy,Initial Capital,Final Equity (INR),Total Return (%),CAGR (%),Max DD (%),Risk Profile
+Bank Fixed Deposit (FD) [2010–2026],"INR 100,000","INR 323,041",+223.04%,7.14%,0.00% (Guaranteed),Risk-Free / Fixed Return
+ML-Filtered 1:2 RR Strategy [2010–2026],"INR 100,000","INR 25,257,335",+25157.34%,39.43%,10.46%,Market Equity / High Return
+Bank Fixed Deposit (FD) [2016–2026],"INR 100,000","INR 198,940",+98.94%,6.45%,0.00% (Guaranteed),Risk-Free / Fixed Return
+ML-Filtered 1:2 RR Strategy [2016–2026],"INR 100,000","INR 12,003,549",+11903.55%,56.72%,15.21%,Market Equity / High Return

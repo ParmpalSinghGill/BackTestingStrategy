@@ -7,6 +7,8 @@ __pycache__/
 data/
 data_daily/
 plot/
+plot_ml_trades/
+Reports/Cache/
 .~lock*
 *.lock
 
