@@ -10,6 +10,8 @@ plot/
 plot_ml_trades/
 plot_1to2_win_1to3_loss_trades/
 Reports/Cache/
+Reports/Multi_Class_Trade_Features_Dataset.csv
+Reports/ML_*_Dataset.csv
 .~lock*
 *.lock
 
