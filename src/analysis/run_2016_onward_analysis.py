@@ -198,5 +198,7 @@ def run_2016_onward_comparison():
     df_rep.to_csv(out_csv, index=False)
     print(f"\nReport exported to: {out_csv.resolve()}", flush=True)
 
+run_2016_onward_strategy_comparison = run_2016_onward_comparison
+
 if __name__ == "__main__":
     run_2016_onward_comparison()

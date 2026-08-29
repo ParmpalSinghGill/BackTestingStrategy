@@ -1,0 +1,5 @@
+Feature Selection Variant,Features Used,Executed Win Rate (%),Executed Trades,Zero-Brokerage Net Equity (Zerodha),Zero-Brokerage Net CAGR (%),Flat Rs20 Net Equity (FYERS),Flat Rs20 Net CAGR (%),Max DD (%),Total Taxes Paid (INR)
+Baseline Unfiltered (Non-ML),0 (N/A),53.92%,"39,180","INR 21,507,916",38.09%,"INR 19,431,047",37.25%,27.10%,"INR 2,561,088"
+Full Model (All 33 Features),33 / 33,56.40%,"40,985","INR 25,257,335",39.43%,"INR 23,414,301",38.79%,10.46%,"INR 2,976,679"
+Pruned Model (Top 15 Features),15 / 33,56.24%,"37,857","INR 23,070,921",38.67%,"INR 22,002,895",38.28%,11.90%,"INR 2,834,359"
+Core Model (Top 8 Key Features),8 / 33,56.30%,"36,424","INR 22,231,552",38.36%,"INR 21,476,130",38.07%,10.30%,"INR 2,771,371"

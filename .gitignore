@@ -8,6 +8,7 @@ data/
 data_daily/
 plot/
 plot_ml_trades/
+plot_1to2_win_1to3_loss_trades/
 Reports/Cache/
 .~lock*
 *.lock
