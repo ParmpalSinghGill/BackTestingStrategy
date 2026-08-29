@@ -5,7 +5,10 @@ __pycache__/
 
 # Data and large files
 data/
+data_daily/
 plot/
+.~lock*
+*.lock
 
 # Environments
 .env

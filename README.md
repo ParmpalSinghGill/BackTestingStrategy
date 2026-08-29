@@ -23,7 +23,7 @@ A high-performance historical backtesting and simulation framework built in Pyth
     *   Enforces a maximum of **2 open positions at any time**.
     *   Calculates net PnL after deducting broker charges, STT, and exchange fees (FYERS intraday charge model).
 7.  **Automated Scheduled Scrapes**:
-    *   Includes a Windows Task Scheduler configuration to incrementally update datasets every Saturday at 6:00 PM.
+    *   Includes a Windows Task Scheduler configuration to incrementally update datasets every Saturday at 9:00 AM (with catch-up on power on if missed).
 
 ---
 

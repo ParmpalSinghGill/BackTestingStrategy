@@ -17,7 +17,7 @@ C:\Users\parmp\anaconda3\python.exe fetch_1min_data.py
 ```
 
 ### B. Update Windows Task Scheduler Task
-The Windows Task Scheduler task `StockBacktest_Fetch1m` runs `run_fetch.bat` every Saturday at 6:00 PM. After moving the project, update the task execution path:
+The Windows Task Scheduler task `StockBacktest_Fetch1m` runs `run_fetch.bat` every Saturday at 9:00 AM (configured to run as soon as possible if the laptop was powered off at 9:00 AM). After moving the project, update the task execution path:
 1. Open PowerShell as Administrator.
 2. Run the following command (replacing `[YOUR_NEW_PROJECT_PATH]` with the new absolute directory path):
    ```powershell
