@@ -9,6 +9,7 @@ A high-performance quantitative swing trading framework built in Python for Indi
 * 📊 **Base Strategy Repository**: **Swing Trading Strategy Suite** (`swing_strategy/`)
 * ⚡ **Subfolder Module**: [Intraday Trading Strategy Suite](intraday_strategy/README.md) (`intraday_strategy/`)
 * 📘 **LLM Realism Specification Guide**: [Guide/Realistic_guide.md](Guide/Realistic_guide.md) (Master 8-Rule Prompt for AI Agents)
+* 📊 **Account Statement & MTM Equity Guide**: [Guide/Account_Statement_guide.md](Guide/Account_Statement_guide.md) (21-Column Institutional Schema & MTM Valuation Rules)
 
 > 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. All historical datasets (`data/`, `data_daily/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored via `.gitignore`.
 
@@ -26,7 +27,8 @@ A high-performance quantitative swing trading framework built in Python for Indi
 │   ├── strategy_engine.py        # Dataset builder & Random Forest training engine
 │   └── plotter.py                # Candlestick trade chart generator
 ├── Guide/
-│   └── Realistic_guide.md        # Master 8-Rule Realism Specification & Prompt Guide for LLMs
+│   ├── Realistic_guide.md        # Master 8-Rule Realism Specification & Prompt Guide for LLMs
+│   └── Account_Statement_guide.md# 21-Column Account Statement Schema & MTM Valuation Guide
 ├── intraday_strategy/            # Intraday Trading Strategy Suite (See intraday_strategy/README.md)
 ├── src/                          # Shared brokerage tax & fee calculators
 │   └── analysis/
