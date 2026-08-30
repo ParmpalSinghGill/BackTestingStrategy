@@ -1,5 +1,5 @@
 """
-Main Execution Script: Streamlined 3-Class Dynamic Risk-Reward ML Selector Strategy (Best Strategy)
+Main Execution Script: Swing Trading Strategy (Streamlined 3-Class Dynamic ML Selector)
 
 Runs:
 1. Walk-Forward Machine Learning Training & Predictions
@@ -7,7 +7,7 @@ Runs:
 3. Excel Statement & Trade Plot Chart Generation
 
 Usage:
-    python best_strategy/run_best_strategy.py
+    python swing_strategy/run_strategy.py
 """
 
 import os
@@ -22,19 +22,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from best_strategy.strategy_engine import prepare_best_strategy_dataset, run_best_strategy_ml_model
-from best_strategy.generate_statement import generate_best_strategy_statement
+from swing_strategy.strategy_engine import prepare_swing_strategy_dataset, run_swing_strategy_ml_model
+from swing_strategy.generate_statement import generate_swing_strategy_statement
 from src.analysis.run_streamlined_multi_class_benchmark import simulate_6class_portfolio
 
 
 def main():
     print("==========================================================================", flush=True)
-    print("      RUNNING BEST STRATEGY: STREAMLINED 3-CLASS DYNAMIC ML SELECTOR      ", flush=True)
+    print("      RUNNING SWING STRATEGY: STREAMLINED 3-CLASS DYNAMIC ML SELECTOR     ", flush=True)
     print("==========================================================================", flush=True)
 
     # Step 1: Build dataset & train ML model
-    df_6c = prepare_best_strategy_dataset()
-    df_acc = run_best_strategy_ml_model(df_6c, probability_threshold=0.42)
+    df_6c = prepare_swing_strategy_dataset()
+    df_acc = run_swing_strategy_ml_model(df_6c, probability_threshold=0.42)
 
     # Step 2: Run Master Portfolio Simulation
     print("\n--- Running Master Portfolio Simulation (Zerodha Model - Zero Brokerage) ---", flush=True)
@@ -46,7 +46,7 @@ def main():
     target_dist_str = f"1:2 ({res_zero['Trades_Chosen_1to2']:,}) / 1:3+ ({res_zero['Trades_Chosen_1to3']:,})"
 
     print("\n==========================================================================", flush=True)
-    print("                       BEST STRATEGY RESULTS SUMMARY                      ", flush=True)
+    print("                      SWING STRATEGY RESULTS SUMMARY                      ", flush=True)
     print("==========================================================================", flush=True)
     print(f"• Total Trades Executed: {res_zero['Executed_Trades']:,}")
     print(f"• Executed Win Rate:    {res_zero['Win_Rate_Pct']:.2f}%")
@@ -57,7 +57,7 @@ def main():
     print("==========================================================================\n", flush=True)
 
     # Step 3: Generate Detailed Account Statement & Trade Plot Graphics
-    generate_best_strategy_statement(initial_deposit=100000.0, max_charts_to_generate=50)
+    generate_swing_strategy_statement(initial_deposit=100000.0, max_charts_to_generate=50)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 """
-Best Strategy Engine: Streamlined 3-Class Dynamic Risk-Reward ML Selector Strategy
+Swing Strategy Engine: Streamlined 3-Class Dynamic Risk-Reward ML Selector Strategy
 
 Target Classes:
 - Class 0: SkipTrade (Failure / Loss)
@@ -32,12 +32,12 @@ from src.analysis.indian_brokerage_calculator import calculate_indian_trade_char
 from src.analysis.ml_prediction_cache import load_cached_predictions, save_predictions_to_cache
 
 
-def prepare_best_strategy_dataset() -> pd.DataFrame:
+def prepare_swing_strategy_dataset() -> pd.DataFrame:
     out_csv = REPORTS_DIR / "Streamlined_6Class_Trade_Features_Dataset.csv"
     if out_csv.exists():
         return pd.read_csv(out_csv)
 
-    print("Building Best Strategy Trade Features Dataset...", flush=True)
+    print("Building Swing Strategy Trade Features Dataset...", flush=True)
     df2 = pd.read_csv(REPORTS_DIR / "ML_1to2_RR_Trade_Features_Dataset.csv")
     df3 = pd.read_csv(REPORTS_DIR / "ML_Trade_Features_Dataset.csv")
 
@@ -57,11 +57,11 @@ def prepare_best_strategy_dataset() -> pd.DataFrame:
     merged["Streamlined_6Class_Label"] = merged.apply(assign_3class_label, axis=1)
 
     merged.to_csv(out_csv, index=False)
-    print(f"Best Strategy Dataset exported to: {out_csv.resolve()}", flush=True)
+    print(f"Swing Strategy Dataset exported to: {out_csv.resolve()}", flush=True)
     return merged
 
 
-def run_best_strategy_ml_model(df_input: pd.DataFrame, probability_threshold: float = 0.42) -> pd.DataFrame:
+def run_swing_strategy_ml_model(df_input: pd.DataFrame, probability_threshold: float = 0.42) -> pd.DataFrame:
     cached_df = load_cached_predictions("rf_streamlined_6class", "6class", probability_threshold)
     if cached_df is not None:
         return cached_df

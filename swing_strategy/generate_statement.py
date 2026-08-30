@@ -1,11 +1,11 @@
 """
-Best Strategy Account Statement & Plot Generator (Initial Deposit: Rs 100,000)
+Swing Strategy Account Statement Generator (Initial Deposit: Rs 100,000)
 
 Executes the Streamlined ML Strategy from 2010 to 2026 starting from Rs 100,000 capital deposit.
 Generates:
 1. Chronological Buy/Exit trade log with running capital balance updates.
-2. High-resolution PNG candlestick charts saved to Plots/statement_trades/.
-3. Formatted Excel Account Statement exported to Reports/Streamlined_ML_Strategy_Account_Statement_100k.xlsx.
+2. High-resolution PNG candlestick charts saved to Plots/swing_statement_trades/.
+3. Formatted Excel Account Statement exported to Reports/Swing_Strategy_Account_Statement_100k.xlsx.
 """
 
 import os
@@ -24,19 +24,19 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 REPORTS_DIR = BASE_DIR / "Reports"
-PLOTS_DIR = BASE_DIR / "Plots" / "statement_trades"
+PLOTS_DIR = BASE_DIR / "Plots" / "swing_statement_trades"
 
-from best_strategy.strategy_engine import prepare_best_strategy_dataset, run_best_strategy_ml_model
-from best_strategy.plotter import plot_statement_trade_chart
+from swing_strategy.strategy_engine import prepare_swing_strategy_dataset, run_swing_strategy_ml_model
+from swing_strategy.plotter import plot_swing_trade_chart
 from src.analysis.indian_brokerage_calculator import calculate_indian_trade_charges
 
 
-def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_charts_to_generate: int = 50):
-    print(f"=== Best Strategy Statement Generator (Initial Deposit: Rs {initial_deposit:,.2f}) ===", flush=True)
+def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_charts_to_generate: int = 50):
+    print(f"=== Swing Strategy Statement Generator (Initial Deposit: Rs {initial_deposit:,.2f}) ===", flush=True)
 
     # 1. Load dataset & run walk-forward predictions
-    df_6c = prepare_best_strategy_dataset()
-    df_acc = run_best_strategy_ml_model(df_6c, probability_threshold=0.42)
+    df_6c = prepare_swing_strategy_dataset()
+    df_acc = run_swing_strategy_ml_model(df_6c, probability_threshold=0.42)
 
     if "ML_Prediction" in df_acc.columns:
         df_acc = df_acc[df_acc["ML_Prediction"] == "Enter"].copy()
@@ -113,14 +113,12 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
             tot_spend = pos["Total_Spend"]
             bal_after_buy = pos["Balance_After_Buy"]
 
-            # Calculate charges (Zerodha model - 0.0 brokerage for delivery/swing, standard statutory charges)
             ch = calculate_indian_trade_charges(entry_p, exit_p, qty, flat_brokerage_per_order=0.0)
             gross_pnl = ch["gross_pnl"]
             taxes = ch["total_charges"]
             net_pnl = ch["net_pnl"]
             ret_pct = (net_pnl / tot_spend * 100.0) if tot_spend > 0 else 0.0
 
-            # Update running cash balance
             cash_returned = tot_spend + net_pnl
             current_balance += net_pnl
 
@@ -137,11 +135,11 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
                 losing_trades_count += 1
             total_taxes_paid += taxes
 
-            # Chart generation (saved in Plots/statement_trades/)
+            # Chart generation
             chart_uri = "N/A"
             if executed_trades_count <= max_charts_to_generate:
                 t_record = {**pos, "Exit_Price": exit_p, "Net_PnL": net_pnl, "Balance_After_Exit": current_balance}
-                chart_uri = plot_statement_trade_chart(t_record, PLOTS_DIR)
+                chart_uri = plot_swing_trade_chart(t_record, PLOTS_DIR)
 
             # Exit Transaction Statement Row
             statement_rows.append({
@@ -179,14 +177,14 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
 
             for cand in candidates:
                 if len(open_positions) >= 2:
-                    break  # Max 2 open positions limit reached
+                    break
 
                 entry_p = cand["Entry_Price_1to2"]
                 qty = cand["Position_Size_1to2"]
                 pos_val = entry_p * qty
 
                 if pos_val > available_cap or qty <= 0:
-                    continue  # Cannot allocate capital
+                    continue
 
                 rr_choice = cand.get("ML_RR_Choice", "1:2")
 
@@ -201,7 +199,6 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
                     exit_dt_val = cand["Exit_Date_1to2"]
                     outcome_val = cand["Outcome_1to2"]
 
-                # Deduct allocated spend for buy
                 allocated_cap += pos_val
                 available_cap -= pos_val
                 bal_after_buy = current_balance - allocated_cap
@@ -228,7 +225,6 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
                 }
                 open_positions.append(pos_info)
 
-                # Buy Transaction Statement Row
                 statement_rows.append({
                     "Transaction_ID": tx_counter,
                     "Trade_ID": trade_id,
@@ -252,15 +248,15 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
                 tx_counter += 1
 
     df_stmt = pd.DataFrame(statement_rows)
-    print(f"\nCompleted Best Strategy Statement Simulation!")
+    print(f"\nCompleted Swing Strategy Statement Simulation!")
     print(f"Initial Deposit: Rs {initial_deposit:,.2f}")
     print(f"Final Balance:   Rs {current_balance:,.2f}")
     print(f"Total Executed Trades: {executed_trades_count}")
     print(f"Winning Trades: {winning_trades_count} ({(winning_trades_count/executed_trades_count*100):.2f}% Win Rate)" if executed_trades_count > 0 else "")
     print(f"Max Portfolio Drawdown: {max_drawdown_pct:.2f}%")
 
-    # 3. Export to Excel in Reports/
-    excel_path = REPORTS_DIR / "Streamlined_ML_Strategy_Account_Statement_100k.xlsx"
+    # Export to Excel in Reports/
+    excel_path = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.xlsx"
     summary_data = {
         "Metric": [
             "Initial Capital Deposit (INR)",
@@ -297,7 +293,6 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
         ws_stmt = wb.active
         ws_stmt.title = "Account Statement"
 
-        # Headers for Statement Tab
         headers = [
             "Tx ID", "Trade ID", "Type", "Date", "Ticker", "Liquidity Source", "Support Price (Rs)",
             "Quantity", "Price (Rs)", "Total Spend (Rs)", "Gross PnL (Rs)", "Taxes/Charges (Rs)",
@@ -305,7 +300,6 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
         ]
         ws_stmt.append(headers)
 
-        # Header formatting
         header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 
@@ -315,7 +309,6 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Rows formatting
         buy_fill = PatternFill(start_color="F0F9FF", end_color="F0F9FF", fill_type="solid")
         sell_win_fill = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
         sell_loss_fill = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
@@ -334,20 +327,17 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
             
             ws_stmt.append(row_data)
 
-            # Apply row styling
             fill = buy_fill if tx_type.startswith("BUY") else (sell_win_fill if pnl >= 0 else sell_loss_fill)
             for col_idx in range(1, len(headers) + 1):
                 cell = ws_stmt.cell(row=row_num, column=col_idx)
                 cell.fill = fill
                 cell.alignment = Alignment(vertical="center")
 
-                # Add Hyperlink to local PNG graph
                 if col_idx == 18 and r["Chart_PNG_URI"] != "N/A":
                     cell.hyperlink = r["Chart_PNG_URI"]
                     cell.value = "View Plot Chart (PNG)"
                     cell.font = Font(name="Calibri", size=10, color="2563EB", underline="single")
 
-        # Summary Tab
         ws_sum = wb.create_sheet(title="Performance Summary")
         ws_sum.append(["Performance Metric", "Strategy Result"])
         ws_sum.cell(row=1, column=1).font = header_font
@@ -364,13 +354,8 @@ def generate_best_strategy_statement(initial_deposit: float = 100000.0, max_char
     except Exception as e:
         print(f"Excel styling export warning: {e}. Exporting CSV fallback instead.", flush=True)
 
-    # Export CSV statement fallback
-    csv_stmt_path = REPORTS_DIR / "Streamlined_ML_Strategy_Account_Statement_100k.csv"
+    csv_stmt_path = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.csv"
     df_stmt.to_csv(csv_stmt_path, index=False)
     print(f"CSV Account Statement saved to: {csv_stmt_path.resolve()}", flush=True)
 
     return excel_path, df_summary
-
-
-if __name__ == "__main__":
-    generate_best_strategy_statement(initial_deposit=100000.0, max_charts_to_generate=50)
