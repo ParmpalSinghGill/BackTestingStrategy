@@ -202,8 +202,9 @@ def generate_intraday_strategy_statement(initial_capital: float = 1000.0):
                 cell.fill = fill
 
                 if col_idx == len(headers) and r["Chart_PNG_URI"] != "N/A":
-                    cell.hyperlink = r["Chart_PNG_URI"]
-                    cell.value = "View Intraday Plot Chart"
+                    uri = r["Chart_PNG_URI"]
+                    cell.value = f'=HYPERLINK("{uri}", "View Intraday Plot Chart")'
+                    cell.hyperlink = uri
                     cell.font = Font(name="Calibri", size=10, color="2563EB", underline="single")
 
         wb.save(excel_path)

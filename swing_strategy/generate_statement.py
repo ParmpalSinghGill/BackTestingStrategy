@@ -4,13 +4,15 @@ Swing Strategy Account Statement Generator (Initial Deposit: Rs 100,000)
 Executes the Streamlined ML Strategy from 2010 to 2026 starting from Rs 100,000 capital deposit.
 Generates:
 1. Chronological Buy/Exit trade log with running capital balance updates.
-2. High-resolution PNG candlestick charts saved to Plots/swing_statement_trades/.
-3. Formatted Excel Account Statement exported to Reports/Swing_Strategy_Account_Statement_100k.xlsx.
+2. High-resolution PNG candlestick charts saved to Plots/swing_statement_trades/ and Plots/statement_trades/.
+3. Formatted Excel Account Statement exported to Reports/Swing_Strategy_Account_Statement_100k.xlsx
+   and Reports/Streamlined_ML_Strategy_Account_Statement_100k.xlsx with native Excel =HYPERLINK(...) formulas.
 """
 
 import os
 import sys
 import math
+import shutil
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -25,6 +27,7 @@ if str(BASE_DIR) not in sys.path:
 
 REPORTS_DIR = BASE_DIR / "Reports"
 PLOTS_DIR = BASE_DIR / "Plots" / "swing_statement_trades"
+PLOTS_STMT_DIR = BASE_DIR / "Plots" / "statement_trades"
 
 from swing_strategy.strategy_engine import prepare_swing_strategy_dataset, run_swing_strategy_ml_model
 from swing_strategy.plotter import plot_swing_trade_chart
@@ -33,6 +36,10 @@ from src.analysis.indian_brokerage_calculator import calculate_indian_trade_char
 
 def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_charts_to_generate: int = 50):
     print(f"=== Swing Strategy Statement Generator (Initial Deposit: Rs {initial_deposit:,.2f}) ===", flush=True)
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    os.makedirs(PLOTS_STMT_DIR, exist_ok=True)
 
     # 1. Load dataset & run walk-forward predictions
     df_6c = prepare_swing_strategy_dataset()
@@ -140,6 +147,9 @@ def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_cha
             if executed_trades_count <= max_charts_to_generate:
                 t_record = {**pos, "Exit_Price": exit_p, "Net_PnL": net_pnl, "Balance_After_Exit": current_balance}
                 chart_uri = plot_swing_trade_chart(t_record, PLOTS_DIR)
+                # Copy chart to statement_trades directory as well
+                if chart_uri != "N/A":
+                    chart_uri_stmt = plot_swing_trade_chart(t_record, PLOTS_STMT_DIR)
 
             # Exit Transaction Statement Row
             statement_rows.append({
@@ -255,8 +265,9 @@ def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_cha
     print(f"Winning Trades: {winning_trades_count} ({(winning_trades_count/executed_trades_count*100):.2f}% Win Rate)" if executed_trades_count > 0 else "")
     print(f"Max Portfolio Drawdown: {max_drawdown_pct:.2f}%")
 
-    # Export to Excel in Reports/
-    excel_path = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.xlsx"
+    excel_path1 = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.xlsx"
+    excel_path2 = REPORTS_DIR / "Streamlined_ML_Strategy_Account_Statement_100k.xlsx"
+
     summary_data = {
         "Metric": [
             "Initial Capital Deposit (INR)",
@@ -333,9 +344,11 @@ def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_cha
                 cell.fill = fill
                 cell.alignment = Alignment(vertical="center")
 
+                # Native Excel =HYPERLINK formula formatting
                 if col_idx == 18 and r["Chart_PNG_URI"] != "N/A":
-                    cell.hyperlink = r["Chart_PNG_URI"]
-                    cell.value = "View Plot Chart (PNG)"
+                    uri = r["Chart_PNG_URI"]
+                    cell.value = f'=HYPERLINK("{uri}", "View Plot Chart (PNG)")'
+                    cell.hyperlink = uri
                     cell.font = Font(name="Calibri", size=10, color="2563EB", underline="single")
 
         ws_sum = wb.create_sheet(title="Performance Summary")
@@ -348,14 +361,20 @@ def generate_swing_strategy_statement(initial_deposit: float = 100000.0, max_cha
         for _, sr in df_summary.iterrows():
             ws_sum.append([sr["Metric"], sr["Value"]])
 
-        wb.save(excel_path)
-        print(f"\nExcel Account Statement successfully saved to: {excel_path.resolve()}", flush=True)
+        wb.save(excel_path1)
+        wb.save(excel_path2)
+        print(f"\nExcel Account Statements saved to:\n  - {excel_path1.resolve()}\n  - {excel_path2.resolve()}", flush=True)
 
     except Exception as e:
         print(f"Excel styling export warning: {e}. Exporting CSV fallback instead.", flush=True)
 
-    csv_stmt_path = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.csv"
-    df_stmt.to_csv(csv_stmt_path, index=False)
-    print(f"CSV Account Statement saved to: {csv_stmt_path.resolve()}", flush=True)
+    csv_stmt_path1 = REPORTS_DIR / "Swing_Strategy_Account_Statement_100k.csv"
+    csv_stmt_path2 = REPORTS_DIR / "Streamlined_ML_Strategy_Account_Statement_100k.csv"
+    df_stmt.to_csv(csv_stmt_path1, index=False)
+    df_stmt.to_csv(csv_stmt_path2, index=False)
 
-    return excel_path, df_summary
+    return excel_path1, df_summary
+
+
+if __name__ == "__main__":
+    generate_swing_strategy_statement(initial_deposit=100000.0, max_charts_to_generate=50)
