@@ -1,95 +1,66 @@
-# Stock Reversal Backtesting Platform
+# Swing Trading Strategy Suite (Base Repository)
 
-A high-performance historical backtesting and simulation framework built in Python to evaluate **Mean Reversion Strategies** on stock and commodity watchlists. It resamples 1-minute historical data into multiple timeframes (`1m`, `5m`, `10m`, `15m`), maps key support/resistance levels, triggers trade setups on price crossings, and simulates realistic portfolio performance under strict capital/leverage constraints.
-
----
-
-## 🛠️ Key Features
-
-1.  **Ticker Matching**: Resolves noisy or abbreviated company names from watchlists (using fuzzy matching and Yahoo Finance API) into official NSE/BSE tickers.
-2.  **Incremental Market Data Scraper**: Downloads historical 1-minute data in compliant chunk sizes from Yahoo Finance, automatically merging new data into existing CSVs to build long-term history without data loss (bypassing the 30-day yfinance limit).
-3.  **Level Detection**: Maps key intraday support & resistance:
-    *   **Previous Day High/Low**
-    *   **Intraday Pivot Points** (using a rolling 5-candle window to confirm support/resistance peaks).
-4.  **Reversal Entry Setups**:
-    *   Arms setups when price crosses a level.
-    *   Triggers entry only on a **valid signal candle** (first opposite-color candle confirming the reversal) and subsequent breakout of its high/low.
-    *   Enforces a **09:30 AM Skip Filter** to ignore early morning noise and volatility.
-5.  **Pivot-Based Trailing Stop-Loss (SL)**:
-    *   Waits for **3 successive higher-lows** (for long trades) or **lower-highs** (for short trades) to form before trailing.
-    *   Trails behind by a **2-pivot cushion** (`list[-3]`) to give the trade room to breathe.
-6.  **Portfolio Simulation Engine**:
-    *   Processes trades across the entire watchlist chronologically.
-    *   Enforces a maximum of **2 open positions at any time**.
-    *   Calculates net PnL after deducting broker charges, STT, and exchange fees (FYERS intraday charge model).
-7.  **Automated Scheduled Scrapes**:
-    *   Includes a Windows Task Scheduler configuration to incrementally update datasets every Saturday at 9:00 AM (with catch-up on power on if missed).
+A high-performance quantitative swing trading framework built in Python for Indian Equity markets (NSE/BSE). It uses walk-forward Machine Learning (Random Forest) models, dynamic Risk-Reward selection (1:2 / 1:3), True Realistic Fills execution ($C3 \text{ Open}$ gap fills, 0.2% gap-up entries, 0.1% gap exits), and an **Entries-First** capital allocation model.
 
 ---
 
-## 📁 Project Structure
+## 🔗 Cross-Repository Navigation
 
-*   `backtest.py`: Main backtest engine that resamples data, identifies levels, triggers reversal signals, and logs trades.
-*   `fetch_1min_data.py`: Downloads historical 1m data and performs incremental updates.
-*   `simulate_portfolio.py`: Runs a chronological portfolio simulation on the backtest trade logs.
-*   `analyze_levels.py`: Compares Previous Day levels vs. Pivot levels performance across timeframes.
-*   `plot_trades.py`: Generates visual candlestick charts for all trades with entry/exit/SL markings.
-*   `Stocks.txt`: Input watchlist file containing stocks to watch.
-*   `EQUITY_L.csv`: NSE master symbol database for ticker mapping.
-*   `ticker_cache.json`: Cached ticker maps to optimize lookup performance.
-*   `run_fetch.bat`: Wrapper batch script for scheduled automation.
-*   `Reports/`: Contains performance and analysis reports:
-    *   `backtest_analysis.md`: Platform architecture overview.
-    *   `portfolio_simulation_results.md`: Portfolio returns by timeframe.
-    *   `levels_performance_comparison.md`: Level-by-level comparison.
-    *   `trailing_sl_explanation.md`: Pivot trailing SL math.
-    *   `wick_analysis_results.md`: Reversal candle wick filter testing.
-    *   `step_by_step_guide.md`: Complete workflow guide.
+* 📊 **Base Strategy Repository**: **Swing Trading Strategy Suite** (`swing_strategy/`)
+* ⚡ **Subfolder Module**: [Intraday Trading Strategy Suite](intraday_strategy/README.md) (`intraday_strategy/`)
+
+> 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. All historical datasets (`data/`, `data_daily/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored via `.gitignore`.
 
 ---
 
-## 🚀 Getting Started
+## 📁 Repository Structure
 
-### 1. Installation
-Install the necessary python dependencies:
-```bash
-pip install pandas yfinance rapidfuzz numpy matplotlib
 ```
-
-### 2. Download Data
-To parse `Stocks.txt` and download/update the 1m historical CSV data for your watchlist:
-```bash
-python fetch_1min_data.py
+.
+├── swing_strategy/
+│   ├── run_strategy.py           # Main swing strategy runner & walk-forward ML model
+│   ├── run_multi_experiments.py  # Parallel multi-process 6-scenario experiment matrix
+│   ├── generate_statement.py     # Entries-First realistic execution engine & statement generator
+│   ├── visualizer.py             # Monthly/Yearly heatmaps, capital growth, and Chart.js HTML hover charts
+│   ├── strategy_engine.py        # Dataset builder & Random Forest training engine
+│   └── plotter.py                # Candlestick trade chart generator
+├── intraday_strategy/            # Intraday Trading Strategy Suite (See intraday_strategy/README.md)
+├── src/                          # Shared brokerage tax & fee calculators
+│   └── analysis/
+│       └── indian_brokerage_calculator.py
+├── .gitignore                    # Code-only git rules (excluding datasets, plots & reports)
+├── README.md                     # Base Swing Strategy Documentation
+└── requirements.txt              # Python package dependencies
 ```
-
-### 3. Run the Backtest
-Run the multi-timeframe reversal backtest engine:
-```bash
-python backtest.py
-```
-This logs trades to `backtest_trades.csv` and prints aggregate statistics.
-
-### 4. Run the Portfolio Simulation
-Evaluate how the trades perform under a $1,000 capital and 2-position limit:
-```bash
-python simulate_portfolio.py
-```
-
-### 5. Generate Trade Plots
-Generate visual chart plots for all trades:
-```bash
-python plot_trades.py
-```
-Plots are saved to the `plot/trades/` directory.
 
 ---
 
-## 📈 Key Findings & Benchmark Records
+## 🚀 Swing Strategy Execution & Features
 
-*   **🏆 Best All-Time Strategy — Dynamic ML RR Selector (+35,840% Net Return / 42.41% Net CAGR)**:
-    *   Our top overall model across the 16-year walk-forward backtest (2010–2026, 2,372 stocks) is the **Dynamic ML Risk-Reward Selector** (`main_ml_dynamic_rr_strategy.py`).
-    *   It achieved **₹35,940,313 Net Final Equity** from ₹100,000 capital (after full taxes and FYERS flat ₹20 charges) with a **55.71% Win Rate** and **15.78% Max Drawdown**.
-    *   It dynamically chooses 1:2 RR for ~99.7% of setups and unlocks 1:3 RR only for rare high-momentum setups. Full report: [BEST_INTRADAY_RESULTS.md](file:///c:/DATA/CODE/Stocks/BackTest/Reports/BEST_INTRADAY_RESULTS.md).
-*   **The 15-Minute Timeframe is the most reliable**: Under realistic portfolio constraints (2-trade limit), the **15-minute timeframe is the most profitable intraday setup (+13.13% base return)**.
-*   **Early Morning Volatility Filters**: Skipping entries in the first 15 minutes of the market session (before 09:30 AM) is essential. Enforcing this rule **turned the 1-minute timeframe from a large loser (-57.82% loss) into a profitable strategy (+3.31% return)**.
-*   **Re-entry & Wick Filters**: Strict wick filters (Marubozu requirements) and sequential re-entries ("catching falling knives") degraded overall returns by filtering out high-quality pullbacks and compounding losses.
+### 1. Run Single Swing Strategy Backtest & Statement
+```bash
+python swing_strategy/run_strategy.py
+```
+- Trains walk-forward Random Forest model on 2,372 stocks across 16 years (2010–2026).
+- Simulates Zerodha (zero brokerage) and FYERS (flat ₹20) net account balances.
+- Generates Excel account statement with native clickable `=HYPERLINK(...)` trade chart links.
+
+### 2. Run Parallel Multi-Experiment Batch Suite
+```bash
+python swing_strategy/run_multi_experiments.py
+```
+- Runs 6 Capital x Risk Cap scenarios simultaneously across CPU cores:
+  1. `Exp_50k_1.0k`: ₹50,000 Capital | ₹1,000 Risk Cap
+  2. `Exp_50k_0.5k`: ₹50,000 Capital | ₹500 Risk Cap (**+1,952.62% Net Return / 20.79% CAGR**)
+  3. `Exp_100k_1.0k`: ₹100,000 Capital | ₹1,000 Risk Cap
+  4. `Exp_100k_0.5k`: ₹100,000 Capital | ₹500 Risk Cap (**+870.47% Net Return / 15.26% CAGR**)
+  5. `Exp_200k_1.0k`: ₹200,000 Capital | ₹1,000 Risk Cap
+  6. `Exp_200k_0.5k`: ₹200,000 Capital | ₹500 Risk Cap (**+2,322.16% Net Return / 22.04% CAGR**)
+- Exports master comparative summary report (`Master_Experiments_Comparison.xlsx`).
+
+---
+
+## 📈 Swing Strategy Benchmarks
+
+* **Entries-First Execution Rule**: New trade entries process FIRST at market open using available cash at the start of Day $D$. Day $D$ exits process SECOND, releasing cash for Day $D+1$ onwards.
+* **Active Position Count Tracking**: Includes an explicit `Active Position Count` column across every statement transaction row.

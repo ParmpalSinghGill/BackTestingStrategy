@@ -1,12 +1,23 @@
+# Python / OS Artifacts
 __pycache__/
 *.pyc
 .DS_Store
 .idea/
 .vscode/
-scratch/
-Plots/
-Reports/*.csv
-Reports/*.pkl
-Reports/Cache/
-Reports/Multi_Experiment_Suite/
+
+# Data Directories & Market Raw Files
+data/
 data_daily/
+scratch/
+EQUITY_L.csv
+Stocks.txt
+ticker_cache.json
+
+# Report & Plot Artifacts (Only pure source code tracked in Git)
+Reports/
+Plots/
+*.csv
+*.xlsx
+*.pkl
+*.png
+*.html
