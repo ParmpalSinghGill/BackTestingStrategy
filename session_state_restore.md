@@ -44,11 +44,17 @@ The latest code in [backtest.py](file:///C:/Users/parmp/OneDrive/CODE/Stocks/Bac
 
 ---
 
-## 3. Key Performance Summary
+## 3. Key Performance Summary & Active Benchmark Record
 
-The backtest runs on watchlists from **June 19 to July 6, 2026** across **111 stock-days**:
-
-*   **15-Minute Timeframe is the Winner**: Under the 2-position limit, trading the **15-minute timeframe is the most profitable strategy (+13.13% to +16.65% return)**. It naturally filters out early morning market noise.
+*   **🏆 OFFICIAL BENCHMARK RECORD — Dynamic ML RR Selector Strategy**:
+    *   **Execution Script**: `main_ml_dynamic_rr_strategy.py`
+    *   **16-Year Walk-Forward Net Return (2010–2026)**: **+35,840.31%** (Net Final Equity of **₹35,940,313** from ₹100,000 capital after full statutory taxes & FYERS flat ₹20 charges).
+    *   **Net CAGR**: **42.41%**
+    *   **Win Rate**: **55.71%** (60,004 executed trades)
+    *   **Max Drawdown**: **15.78%**
+    *   **Target Distribution**: 59,832 trades (99.71%) @ 1:2 RR / 172 trades (0.29%) @ 1:3 RR.
+    *   **Detailed Document**: [BEST_INTRADAY_RESULTS.md](file:///c:/DATA/CODE/Stocks/BackTest/Reports/BEST_INTRADAY_RESULTS.md)
+*   **15-Minute Timeframe is the Winner**: Under the 2-position limit, trading the **15-minute timeframe is the most profitable base strategy (+13.13% to +16.65% return)**. It naturally filters out early morning market noise.
 *   **Skipping the First 15 Minutes is Essential**: Enforcing the 09:30 AM entry rule **turned the 1-minute timeframe from a large loser (-57.82% loss) into a profitable strategy (+3.31% return)**.
 *   **Re-entries and Wick Filters degrade performance**:
     *   Allowing 2nd/3rd tries on immediately stopped-out trades (re-entry rule) degraded the 15m return (from +13.13% down to +8.14%) and turned the 1m chart back into a loss (-33.02%) because it resulted in catching falling knives.

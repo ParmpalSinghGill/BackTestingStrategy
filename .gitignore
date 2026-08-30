@@ -1,40 +1,13 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Data and large files
+*.pyc
+*.pkl
+Reports/Cache/
+Reports/*Dataset.csv
+Reports/*_Dataset.csv
+.venv/
+venv/
+.idea/
+.vscode/
 data/
 data_daily/
-plot/
-plot_ml_trades/
-plot_1to2_win_1to3_loss_trades/
-Reports/Cache/
-Reports/Multi_Class_Trade_Features_Dataset.csv
-Reports/ML_*_Dataset.csv
 .~lock*
-*.lock
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE files
-.vscode/
-.idea/
-.vs/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
-
-# OS metadata
-Thumbs.db
-ehthumbs.db
-Desktop.ini

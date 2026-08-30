@@ -84,7 +84,12 @@ Plots are saved to the `plot/trades/` directory.
 
 ---
 
-## 📈 Key Findings
-*   **The 15-Minute Timeframe is the most reliable**: Under realistic portfolio constraints (2-trade limit), the **15-minute timeframe is the most profitable setup (+13.13% return)**.
+## 📈 Key Findings & Benchmark Records
+
+*   **🏆 Best All-Time Strategy — Dynamic ML RR Selector (+35,840% Net Return / 42.41% Net CAGR)**:
+    *   Our top overall model across the 16-year walk-forward backtest (2010–2026, 2,372 stocks) is the **Dynamic ML Risk-Reward Selector** (`main_ml_dynamic_rr_strategy.py`).
+    *   It achieved **₹35,940,313 Net Final Equity** from ₹100,000 capital (after full taxes and FYERS flat ₹20 charges) with a **55.71% Win Rate** and **15.78% Max Drawdown**.
+    *   It dynamically chooses 1:2 RR for ~99.7% of setups and unlocks 1:3 RR only for rare high-momentum setups. Full report: [BEST_INTRADAY_RESULTS.md](file:///c:/DATA/CODE/Stocks/BackTest/Reports/BEST_INTRADAY_RESULTS.md).
+*   **The 15-Minute Timeframe is the most reliable**: Under realistic portfolio constraints (2-trade limit), the **15-minute timeframe is the most profitable intraday setup (+13.13% base return)**.
 *   **Early Morning Volatility Filters**: Skipping entries in the first 15 minutes of the market session (before 09:30 AM) is essential. Enforcing this rule **turned the 1-minute timeframe from a large loser (-57.82% loss) into a profitable strategy (+3.31% return)**.
-*   **Re-entry & Wick Filters**: Strict wick filters (Marubozu requirements) and sequential re-entries ("catching falling knives") were shown to degrade overall returns by filtering out high-quality pullbacks and compounding losses.
+*   **Re-entry & Wick Filters**: Strict wick filters (Marubozu requirements) and sequential re-entries ("catching falling knives") degraded overall returns by filtering out high-quality pullbacks and compounding losses.

@@ -1,0 +1,2 @@
+Strategy & Model Variant,Executed Win Rate (%),Executed Trades,Target Distribution (1:2 / 1:3+),Zero-Brokerage Net Equity (Zerodha),Zero-Brokerage Net CAGR (%),Flat Rs20 Net Equity (FYERS),Flat Rs20 Net CAGR (%),Max DD (%),Total Statutory Taxes Paid
+"Multi-Tier Dynamic ML RR Selector (SkipTrade, 1:2 to 1:15 RR)",55.69%,"52,415","52,320 (1:2) / 95 (1:3+)","INR 31,831,962",41.38%,"INR 34,314,046",42.02%,27.42%,"INR 3,229,971"

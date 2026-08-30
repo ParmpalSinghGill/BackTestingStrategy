@@ -1,0 +1,7 @@
+Retraining Frequency,Freq Code,Executed Win Rate (%),Executed Trades,Target Dist (1:2 / 1:3),Zerodha Net Equity (INR),Zerodha Net CAGR (%),FYERS Net Equity (INR),FYERS Net CAGR (%),Max DD (%),Statutory Taxes (INR)
+1 Month (Monthly),1M,55.48%,"54,259","53,755 / 504","INR 32,988,585",41.68%,"INR 31,859,409",41.39%,25.71%,"INR 3,354,486"
+3 Months (Quarterly),3M,54.86%,"57,533","56,989 / 544","INR 33,910,755",41.92%,"INR 30,753,831",41.09%,16.94%,"INR 3,556,323"
+6 Months (Semi-Annual),6M,54.95%,"50,125","49,715 / 410","INR 29,632,086",40.77%,"INR 31,090,330",41.18%,29.30%,"INR 3,111,084"
+1 Year (Annual Baseline),1Y,55.71%,"60,004","59,832 / 172","INR 36,531,881",42.55%,"INR 35,940,313",42.41%,15.78%,"INR 3,672,480"
+2 Years (Bi-Annual),2Y,54.79%,"46,612","46,415 / 197","INR 27,025,084",39.99%,"INR 27,809,092",40.23%,25.70%,"INR 2,937,126"
+5 Years (5-Year Block),5Y,55.46%,"48,354","48,291 / 63","INR 28,926,138",40.57%,"INR 32,790,966",41.63%,28.04%,"INR 3,043,912"
