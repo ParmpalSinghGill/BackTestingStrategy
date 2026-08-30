@@ -46,8 +46,20 @@ def plot_swing_trade_chart(trade_record: dict, output_dir: Path = None) -> str:
     if file_path.exists():
         return file_path.as_uri()
 
-    csv_file = DATA_DAILY_DIR / f"{ticker}.csv"
-    if not csv_file.exists():
+    csv_candidates = [
+        DATA_DAILY_DIR / f"{ticker}_1d.csv",
+        DATA_DAILY_DIR / f"{ticker}.csv",
+        DATA_DAILY_DIR / f"{ticker.replace('.NS', '')}_1d.csv",
+        DATA_DAILY_DIR / f"{ticker.replace('.NS', '')}.csv"
+    ]
+
+    csv_file = None
+    for cand in csv_candidates:
+        if cand.exists():
+            csv_file = cand
+            break
+
+    if csv_file is None:
         return "N/A"
 
     try:
