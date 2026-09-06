@@ -1,0 +1,32 @@
+---
+description: Current verified best swing strategy and returns — do not cite stale ML or C1-submerged numbers
+alwaysApply: true
+---
+
+# Current best strategy (verified 6 Sep 2026)
+
+Source of truth: `strategy/BEST_STRATEGY.md`. Do-not-retry log: `strategy/TRIED_EXPERIMENTS.md`.
+
+**Do not cite as live results:** README ML CAGRs (+870% / +1952% / +2322%), Dynamic ML +35,840%, C1-submerged / User-Defined Pure / Confirmed / SwingNoMl (those lose after tax). Oracle / lookahead top-N by future R is a ceiling only. ₹2,800–₹4,000 risk 40%+ prints are the same selector with a larger risk cap, not the three target books.
+
+## Live strategy
+
+- Liquidity: Year/Month/Week low with real range (skip flat/doji HTF prints). On sweep, if next **intact** support below is within 5%, use the lower level. Do not reuse already-swept lows.
+- C1: green candle, **open below** liquidity (high may poke)
+- C2 / A1: C2 close > C1 high before C1 low breaks → enter **C3 at C3 open**
+- SL: sweep-to-C1 lowest low × 0.99
+- Exit: full position at 1:2
+- Primary: walk-forward XGBoost (train years `< Y`, purge overlapping exits)
+- Meta-label: second XGBoost on v6 features + primary score; drop `Meta_P < 0.38`; daily **top 32** by `Meta_P`
+- Sizing: Moreira–Muir scale `clip(0.04 / day_median_idio_vol, 0.40, 1.80)` × rank 1.4× → 0.6×
+- Same code for every book; only capital and risk change
+
+## Verified net CAGR (Zerodha, 2010-01-01 to 2026-08-28)
+
+| Book | Net CAGR | Max DD |
+|------|----------|--------|
+| ₹50,000 / ₹500 | **+36.39%** | 32.4% |
+| ₹100,000 / ₹500 | **+31.38%** | 28.6% |
+| ₹100,000 / ₹1,000 | **+36.81%** | 30.8% |
+
+Two of three target books over 35%. Gap is ₹100k / ₹500. Previous no-ML baseline +6.91% / 78% DD is not live.

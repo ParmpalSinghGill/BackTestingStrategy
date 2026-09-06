@@ -6,15 +6,13 @@ Generates:
 2. Yearly Returns Breakdown (PNG): Bar chart & table of annual performance.
 3. Capital Growth Graph (PNG): Monthly line chart of portfolio balance.
 4. Interactive Equity Curve (HTML): Standalone HTML chart with interactive date hover tooltips
-   showing Date, Account Balance, Active Positions Count, and Daily Net Return.
+   showing Date, Total Portfolio, Cash, Holdings, Active Positions, and Daily Net Return.
 """
 
 import os
-import sys
 import json
 from pathlib import Path
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -26,7 +24,7 @@ DEFAULT_REPORTS_DIR = BASE_DIR / "Reports"
 def generate_monthly_heatmap(df_daily_equity: pd.DataFrame, output_png: Path = None):
     if output_png is None:
         output_png = DEFAULT_PLOTS_DIR / "Monthly_Returns_Heatmap.png"
-    
+
     os.makedirs(output_png.parent, exist_ok=True)
 
     if df_daily_equity.empty:
@@ -48,12 +46,12 @@ def generate_monthly_heatmap(df_daily_equity: pd.DataFrame, output_png: Path = N
     monthly_last["Return_Pct"] = ((monthly_last["Balance"] - monthly_last["Prev_Balance"]) / monthly_last["Prev_Balance"]) * 100.0
 
     pivot_df = monthly_last.pivot(index="Year", columns="Month", values="Return_Pct")
-    month_names = {1:"Jan", 2:"Feb", 3:"Mar", 4:"Apr", 5:"May", 6:"Jun", 7:"Jul", 8:"Aug", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dec"}
+    month_names = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}
     pivot_df = pivot_df.rename(columns=month_names)
 
     plt.figure(figsize=(12, max(6, len(pivot_df) * 0.45)))
     sns.set_theme(style="white")
-    
+
     cmap = sns.diverging_palette(10, 130, as_cmap=True)
 
     ax = sns.heatmap(
@@ -146,13 +144,18 @@ def generate_capital_growth_chart(df_daily_equity: pd.DataFrame, output_png: Pat
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
-    ax1.plot(monthly_df["Date"], monthly_df["Balance"], color="#2563EB", linewidth=2.5, label="Account Balance (INR)")
+    ax1.plot(monthly_df["Date"], monthly_df["Balance"], color="#2563EB", linewidth=2.5, label="Total Portfolio Value (Cash + Holdings)")
     ax1.fill_between(monthly_df["Date"], monthly_df["Balance"], color="#3B82F6", alpha=0.15)
+    if "Cash_Balance" in df.columns:
+        cash_m = df.groupby("YearMonth")["Cash_Balance"].last().reset_index()
+        cash_m["Date"] = cash_m["YearMonth"].dt.to_timestamp()
+        ax1.plot(cash_m["Date"], cash_m["Cash_Balance"], color="#64748B", linewidth=1.6, linestyle="--", label="Free Cash Balance")
 
     ax1.set_title("Swing Strategy - Monthly Capital Growth Progression", fontsize=14, fontweight="bold", pad=15)
     ax1.set_xlabel("Date", fontsize=11, fontweight="bold")
     ax1.set_ylabel("Portfolio Equity Balance (INR)", fontsize=11, fontweight="bold", color="#1E293B")
     ax1.yaxis.set_major_formatter("₹{x:,.0f}")
+    ax1.legend(loc="upper left", frameon=True)
     ax1.grid(True, linestyle=":", alpha=0.6)
 
     plt.tight_layout()
@@ -177,10 +180,16 @@ def generate_interactive_equity_html(df_daily_equity: pd.DataFrame, output_html:
     active_pos_list = [int(p) for p in df["Active_Positions"]]
     daily_pnl_list = [round(float(p), 2) for p in df["Daily_PnL"]]
     daily_ret_list = [round(float(r), 2) for r in df["Daily_Return_Pct"]]
+    cash_col = "Cash_Balance" if "Cash_Balance" in df.columns else None
+    hold_col = "Holding_Equity_Value" if "Holding_Equity_Value" in df.columns else None
+    cash_list = [round(float(c), 2) for c in df[cash_col]] if cash_col else balance_list
+    hold_list = [round(float(h), 2) for h in df[hold_col]] if hold_col else [0.0] * len(balance_list)
 
     data_payload = {
         "dates": dates_list,
         "balances": balance_list,
+        "cash": cash_list,
+        "holdings": hold_list,
         "active_positions": active_pos_list,
         "daily_pnl": daily_pnl_list,
         "daily_return": daily_ret_list
@@ -310,14 +319,14 @@ def generate_interactive_equity_html(df_daily_equity: pd.DataFrame, output_html:
     </div>
 
     <div class="footer">
-        Generated automatically by Swing Strategy Engine. Hover over any date on the graph to inspect exact balance, active positions count, and daily PnL.
+        Generated automatically by Swing Strategy Engine. Hover over any date to inspect cash, holdings, active positions, and daily PnL.
     </div>
 
     <script>
         const rawData = {payload_json};
 
         const ctx = document.getElementById('equityChart').getContext('2d');
-        
+
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
         gradient.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
         gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
@@ -328,16 +337,28 @@ def generate_interactive_equity_html(df_daily_equity: pd.DataFrame, output_html:
                 labels: rawData.dates,
                 datasets: [
                     {{
-                        label: 'Account Equity (INR)',
+                        label: 'Total Portfolio Value (Cash + Holdings)',
                         data: rawData.balances,
                         borderColor: '#3B82F6',
-                        borderWidth: 2,
+                        borderWidth: 2.5,
                         fill: true,
                         backgroundColor: gradient,
                         tension: 0.1,
                         pointRadius: 0,
                         pointHoverRadius: 6,
                         pointHoverBackgroundColor: '#10B981',
+                        yAxisID: 'y'
+                    }},
+                    {{
+                        label: 'Free Cash Balance',
+                        data: rawData.cash,
+                        borderColor: '#94A3B8',
+                        borderWidth: 1.6,
+                        borderDash: [6, 4],
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
                         yAxisID: 'y'
                     }},
                     {{
@@ -383,18 +404,24 @@ def generate_interactive_equity_html(df_daily_equity: pd.DataFrame, output_html:
                             label: function(context) {{
                                 const idx = context.dataIndex;
                                 const bal = rawData.balances[idx];
+                                const cash = rawData.cash[idx];
+                                const hold = rawData.holdings[idx];
                                 const active = rawData.active_positions[idx];
                                 const pnl = rawData.daily_pnl[idx];
                                 const ret = rawData.daily_return[idx];
 
                                 if (context.datasetIndex === 0) {{
                                     return [
-                                        ' Account Balance: ₹' + bal.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
+                                        ' Total Portfolio Value (Cash + Holdings): ₹' + bal.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
+                                        ' Free Cash Balance: ₹' + cash.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
+                                        ' Open Holdings Equity: ₹' + hold.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
                                         ' Daily Net PnL: ₹' + (pnl >= 0 ? '+' : '') + pnl.toLocaleString('en-IN', {{minimumFractionDigits: 2}}) + ' (' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%)'
                                     ];
-                                }} else {{
-                                    return ' Active Positions Count: ' + active;
                                 }}
+                                if (context.datasetIndex === 1) {{
+                                    return ' Free Cash Balance: ₹' + cash.toLocaleString('en-IN', {{minimumFractionDigits: 2}});
+                                }}
+                                return ' Active Positions Count: ' + active;
                             }}
                         }}
                     }}

@@ -1,6 +1,6 @@
 # Session State Restoration: Stock Backtesting Strategy
 
-This document serves as a complete memory state containing all strategy parameters, files created, test findings, and relocation instructions. When moving this project to a new directory path, refer to this guide to restore everything to working order.
+Relocation notes plus the **current verified strategy**. Live rules and returns: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md).
 
 ---
 
@@ -8,8 +8,8 @@ This document serves as a complete memory state containing all strategy paramete
 
 When you move this project to its new directory path:
 
-### A. Update [run_fetch.bat](file:///C:/Users/parmp/OneDrive/CODE/Stocks/BackTest/run_fetch.bat)
-The batch wrapper script contains a hardcoded absolute path to point python to the correct working directory. Edit [run_fetch.bat](file:///C:/Users/parmp/OneDrive/CODE/Stocks/BackTest/run_fetch.bat) in the new location:
+### A. Update `run_fetch.bat`
+The batch wrapper script contains a hardcoded absolute path. Edit it in the new location:
 ```batch
 @echo off
 cd /d [YOUR_NEW_PROJECT_PATH]
@@ -17,56 +17,39 @@ C:\Users\parmp\anaconda3\python.exe fetch_1min_data.py
 ```
 
 ### B. Update Windows Task Scheduler Task
-The Windows Task Scheduler task `StockBacktest_Fetch1m` runs `run_fetch.bat` every Saturday at 9:00 AM (configured to run as soon as possible if the laptop was powered off at 9:00 AM). After moving the project, update the task execution path:
-1. Open PowerShell as Administrator.
-2. Run the following command (replacing `[YOUR_NEW_PROJECT_PATH]` with the new absolute directory path):
-   ```powershell
-   schtasks /change /tn "StockBacktest_Fetch1m" /tr "[YOUR_NEW_PROJECT_PATH]\run_fetch.bat"
-   ```
+The Windows Task Scheduler task `StockBacktest_Fetch1m` runs `run_fetch.bat` every Saturday at 9:00 AM. After moving:
+```powershell
+schtasks /change /tn "StockBacktest_Fetch1m" /tr "[YOUR_NEW_PROJECT_PATH]\run_fetch.bat"
+```
 
 ---
 
-## 2. Current Strategy Parameters
+## 2. Current Strategy (verified 5 Sep 2026)
 
-The latest code in [backtest.py](file:///C:/Users/parmp/OneDrive/CODE/Stocks/BackTest/backtest.py) implements the following trading rules:
+Not the old 15-minute reversal and not the no-ML scaled TF→Nifty book. Live spec: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md). Do-not-retry: [strategy/TRIED_EXPERIMENTS.md](strategy/TRIED_EXPERIMENTS.md).
 
-*   **Entry Filter**: **Skip first 15 minutes** (ignore all setups entering before **09:30 AM**).
-*   **Pivot Window**: A candle must be lower/higher than its preceding 2 candles and succeeding 2 candles to count as a pivot (5-candle confirmation window).
-*   **Trailing Stop-Loss**: Watches for Higher Lows (HL) / Lower Highs (LH). Once $\ge 3$ are formed, the stop-loss trails to the `-3` index (maintaining a 2-pivot cushion). The stop-loss only moves in the favorable direction (never moves backwards).
-*   **Re-entry Rule**: If a trade is stopped out immediately (`sl_hit`) without forming a single Higher Low/Lower High, the engine allows **up to 3 consecutive tries** on subsequent crossings for that level. Once a trade succeeds or exits after forming a pivot, it stops trading that level for the day.
-*   **Wick Filters**: Disabled by default in `backtest.py`. We proved that wick filters filter out the best winning reversal trades, degrading performance. However, they can be tested using `test_wicks.py`.
-*   **Portfolio Constraints**:
-    *   Starting Capital: **$1,000.00**
-    *   Leverage limit: 5x (Max total notional value of $5,000.00)
-    *   Allocation per Trade: **$2,500.00** notional per trade
-    *   Max Open Trades: **2 positions** at any time.
-    *   Cost model: Intraday brokerage, STT, exchange fees, and GST calculated according to the FYERS cost structure.
+- Liquidity: on sweep, if next support below is within 5%, use the lower level
+- C1: green, **open below** liquidity
+- C2 / A1: C2 close > C1 high before C1 low breaks; enter **C3 at C3 open**
+- SL: sweep-to-C1 lowest low × 0.99
+- Exit: full position at 1:2
+- Selection: walk-forward XGBoost + meta-label; drop `Meta_P < 0.40`; daily top 16 by `Meta_P`
+- Sizing: Moreira–Muir `clip(0.04 / day_median_idio_vol, 0.40, 1.80)` × rank 1.4× → 0.6×
+- Same code for ₹50k/₹500, ₹100k/₹500, ₹100k/₹1k
+- Runner: `python swing_strategy/run_ml_wave4.py`
 
 ---
 
-## 3. Key Performance Summary & Active Benchmark Record
+## 3. Verified benchmark (replace any older “official” record)
 
-*   **🏆 OFFICIAL BENCHMARK RECORD — Dynamic ML RR Selector Strategy**:
-    *   **Execution Script**: `main_ml_dynamic_rr_strategy.py`
-    *   **16-Year Walk-Forward Net Return (2010–2026)**: **+35,840.31%** (Net Final Equity of **₹35,940,313** from ₹100,000 capital after full statutory taxes & FYERS flat ₹20 charges).
-    *   **Net CAGR**: **42.41%**
-    *   **Win Rate**: **55.71%** (60,004 executed trades)
-    *   **Max Drawdown**: **15.78%**
-    *   **Target Distribution**: 59,832 trades (99.71%) @ 1:2 RR / 172 trades (0.29%) @ 1:3 RR.
-    *   **Detailed Document**: [BEST_INTRADAY_RESULTS.md](file:///c:/DATA/CODE/Stocks/BackTest/Reports/BEST_INTRADAY_RESULTS.md)
-*   **15-Minute Timeframe is the Winner**: Under the 2-position limit, trading the **15-minute timeframe is the most profitable base strategy (+13.13% to +16.65% return)**. It naturally filters out early morning market noise.
-*   **Skipping the First 15 Minutes is Essential**: Enforcing the 09:30 AM entry rule **turned the 1-minute timeframe from a large loser (-57.82% loss) into a profitable strategy (+3.31% return)**.
-*   **Re-entries and Wick Filters degrade performance**:
-    *   Allowing 2nd/3rd tries on immediately stopped-out trades (re-entry rule) degraded the 15m return (from +13.13% down to +8.14%) and turned the 1m chart back into a loss (-33.02%) because it resulted in catching falling knives.
-    *   Wick filters (Marubozu requirements) cut out the best rejection swings, causing net losses across almost all timeframes.
+Net Zerodha CAGR 2010-01-01 to 2026-08-28 (walk-forward, Indian tax):
 
----
+| Book | Net CAGR | Max DD |
+|------|----------|--------|
+| ₹50,000 / ₹500 | **+34.87%** | 37.4% |
+| ₹100,000 / ₹500 | **+30.72%** | 21.9% |
+| ₹100,000 / ₹1,000 | **+35.24%** | 36.5% |
 
-## 4. Scripts Added in this Session
+Previous no-ML baseline (₹50k/₹1k, 33/33/34 @ 1:1/1:3/1:4): ₹152,212 / +6.91% / 78% DD.
 
-*   `simulate_portfolio.py`: Runs chronological simulation of trades with 2-open-trades limits.
-*   `analyze_levels.py`: Breaks down candidate vs. portfolio returns for Prev Day vs. Pivot levels.
-*   `test_wicks.py`: Scratch script evaluating all combinations of wicks (1:2, 1:5, etc.) and re-entries.
-*   `plot_trades.py`: Headless optimized plotting script saving charts in subfolders (e.g. `Pivot_1M`, `PrevDay_5M`).
-*   `run_fetch.bat`: Wrapper batch script for task automation.
-*   `Reports/`: Contains all detailed MD reports for the findings.
+**Discarded numbers (do not restore as current):** Dynamic ML +35,840%; README ML +870% / +1,952% / +2,322%; C1-submerged / Pure / Confirmed / SwingNoMl (negative after tax); oracle lookahead top-N; ₹2,800–₹4,000 risk 40% prints (not the three target books).

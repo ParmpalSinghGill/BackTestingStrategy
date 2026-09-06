@@ -10,13 +10,6 @@ Execution Rules & Order of Operations:
 4. Gap Exit: If Exit Open > Target Price or Exit Open < SL Price, sells at Exit Open * 0.999 (0.1% below Exit Open).
 5. Sizing: Quantity = max(1, int(1000.0 / (Entry_Price - SL_Price))).
 6. Active Position Count: Tracks exact count of open active trades on every transaction.
-
-Generates:
-1. Chronological Buy/Exit trade log with running capital balance updates and active position counts.
-2. High-resolution PNG candlestick charts saved to Plots/swing_statement_trades/.
-3. Formatted Excel Account Statement exported to Reports/Swing_Strategy_Account_Statement_{cap}k.xlsx
-   with native Excel =HYPERLINK(...) formulas.
-4. Monthly & Yearly Returns Heatmaps, Capital Growth Graphs, and Interactive Date Hover Equity HTML.
 """
 
 import os
@@ -118,10 +111,22 @@ def generate_swing_strategy_statement(
 
     print(f"=== Swing Strategy Statement Generator [{exp_name or 'Default'}] (Initial Deposit: Rs {initial_deposit:,.2f}, Max Risk Cap: Rs {max_risk_per_trade:,.2f}) ===", flush=True)
 
-    # 1. Load dataset & run walk-forward predictions if not provided
     if df_acc is None:
-        df_6c = prepare_swing_strategy_dataset()
-        df_acc = run_swing_strategy_ml_model(df_6c, probability_threshold=0.42)
+        dataset_path = DEFAULT_REPORTS_DIR / "Exact_True_6Class_Trade_Features_Dataset.csv"
+        if not dataset_path.exists():
+            dataset_path = DEFAULT_REPORTS_DIR / "OLD" / "Exact_True_6Class_Trade_Features_Dataset.csv"
+        df_input = pd.read_csv(dataset_path)
+        if "Scenario_1to2" not in df_input.columns:
+            df_input["Scenario_1to2"] = df_input.get("Scenario", "Scenario 1 (Green & Close > C1 High)")
+        if "Streamlined_6Class_Label" not in df_input.columns:
+            def assign_label(r):
+                m = float(r.get("Max_RR_Achieved", 0.0))
+                if m >= 3.0: return 2
+                elif m >= 2.0: return 1
+                else: return 0
+            df_input["Streamlined_6Class_Label"] = df_input.apply(assign_label, axis=1)
+        from src.analysis.run_streamlined_multi_class_benchmark import run_walk_forward_6class_model
+        df_acc = run_walk_forward_6class_model(df_input, probability_threshold=0.42)
 
     if "ML_Prediction" in df_acc.columns:
         df_acc = df_acc[df_acc["ML_Prediction"] == "Enter"].copy()
@@ -129,7 +134,6 @@ def generate_swing_strategy_statement(
     df_acc["C2_Date"] = pd.to_datetime(df_acc["C2_Date"])
     df_acc = df_acc.sort_values("C2_Date").reset_index(drop=True)
 
-    # 2. Chronological Simulation Setup
     current_balance = initial_deposit
     peak_balance = initial_deposit
     max_drawdown_pct = 0.0
@@ -137,7 +141,6 @@ def generate_swing_strategy_statement(
     statement_rows = []
     daily_equity_rows = []
     
-    # Add Initial Deposit Statement Entry
     deposit_date = "2010-01-01"
     statement_rows.append({
         "Transaction_ID": 1,
@@ -156,6 +159,8 @@ def generate_swing_strategy_statement(
         "Return_Pct": 0.0,
         "Balance": current_balance,
         "Active_Position_Count": 0,
+        "Holding_Equity_Value": 0.0,
+        "Total_Portfolio_Value": current_balance,
         "Target_RR_Mode": "N/A",
         "Outcome": "DEPOSIT",
         "Chart_PNG_URI": "N/A"
@@ -168,12 +173,17 @@ def generate_swing_strategy_statement(
     total_taxes_paid = 0.0
     gap_up_entries_count = 0
 
+    target_counts = {"1:2": 0, "1:3": 0, "1:4": 0, "1:5": 0, "1:6": 0}
+
     trades_by_date = {}
     for r_dict in df_acc.to_dict("records"):
         trades_by_date.setdefault(r_dict["C2_Date"], []).append(r_dict)
 
     min_dt = df_acc["C2_Date"].min()
-    max_exit = max(pd.to_datetime(df_acc["Exit_Date_1to2"]).max(), pd.to_datetime(df_acc["Exit_Date_1to3"]).max())
+    max_exit = max(
+        pd.to_datetime(df_acc.get("Exit_Date_1to2", df_acc["C2_Date"])).max(),
+        pd.to_datetime(df_acc.get("Exit_Date_1to3", df_acc["C2_Date"])).max()
+    )
     all_days = pd.date_range(min_dt, max_exit, freq="D")
 
     tx_counter = 2
@@ -195,21 +205,38 @@ def generate_swing_strategy_statement(
 
             if available_cap > 0:
                 for cand in candidates:
-                    base_entry_p = cand["Entry_Price_1to2"]
+                    base_entry_p = cand.get("Entry_Price_1to2", cand.get("Entry_Price", 100.0))
                     rr_choice = cand.get("ML_RR_Choice", "1:2")
 
-                    if rr_choice == "1:3":
-                        sl_p = cand["SL_Price_1to3"]
-                        tp_p = cand["Target_Price_1to3"]
-                        exit_dt_val = cand["Exit_Date_1to3"]
-                        outcome_val = cand["Outcome_1to3"]
+                    if rr_choice == "1:6":
+                        sl_p = cand.get("SL_Price_1to6", cand.get("SL_Price_1to2", cand.get("SL_Price")))
+                        tp_p = cand.get("Target_Price_1to6", round(base_entry_p + 6.0 * (base_entry_p - sl_p), 2))
+                        exit_dt_val = cand.get("Exit_Date_1to6", cand.get("Exit_Date_1to2"))
+                        outcome_val = cand.get("Outcome_1to6", cand.get("Outcome_1to2"))
+                    elif rr_choice == "1:5":
+                        sl_p = cand.get("SL_Price_1to5", cand.get("SL_Price_1to2", cand.get("SL_Price")))
+                        tp_p = cand.get("Target_Price_1to5", round(base_entry_p + 5.0 * (base_entry_p - sl_p), 2))
+                        exit_dt_val = cand.get("Exit_Date_1to5", cand.get("Exit_Date_1to2"))
+                        outcome_val = cand.get("Outcome_1to5", cand.get("Outcome_1to2"))
+                    elif rr_choice == "1:4":
+                        sl_p = cand.get("SL_Price_1to4", cand.get("SL_Price_1to2", cand.get("SL_Price")))
+                        tp_p = cand.get("Target_Price_1to4", round(base_entry_p + 4.0 * (base_entry_p - sl_p), 2))
+                        exit_dt_val = cand.get("Exit_Date_1to4", cand.get("Exit_Date_1to2"))
+                        outcome_val = cand.get("Outcome_1to4", cand.get("Outcome_1to2"))
+                    elif rr_choice == "1:3":
+                        sl_p = cand.get("SL_Price_1to3", cand.get("SL_Price_1to2", cand.get("SL_Price")))
+                        tp_p = cand.get("Target_Price_1to3", round(base_entry_p + 3.0 * (base_entry_p - sl_p), 2))
+                        exit_dt_val = cand.get("Exit_Date_1to3", cand.get("Exit_Date_1to2"))
+                        outcome_val = cand.get("Outcome_1to3", cand.get("Outcome_1to2"))
                     else:
-                        sl_p = cand["SL_Price_1to2"]
-                        tp_p = cand["Target_Price_1to2"]
-                        exit_dt_val = cand["Exit_Date_1to2"]
-                        outcome_val = cand["Outcome_1to2"]
+                        sl_p = cand.get("SL_Price_1to2", cand.get("SL_Price"))
+                        tp_p = cand.get("Target_Price_1to2", cand.get("Target_Price"))
+                        exit_dt_val = cand.get("Exit_Date_1to2", cand.get("Exit_Date"))
+                        outcome_val = cand.get("Outcome_1to2", cand.get("Outcome"))
 
-                    # Position Sizing based on max_risk_per_trade
+                    if pd.isna(exit_dt_val) or exit_dt_val is None or str(exit_dt_val) == "nan":
+                        exit_dt_val = cand.get("Exit_Date_1to2", cand.get("Exit_Date"))
+
                     risk_per_share = max(0.05, base_entry_p - sl_p)
                     qty = max(1, int(max_risk_per_trade / risk_per_share))
                     pos_val = base_entry_p * qty
@@ -220,7 +247,7 @@ def generate_swing_strategy_statement(
                     c2_dt_str = curr_dt.strftime("%Y-%m-%d")
                     c3_open = get_c3_open_instant(cand["Ticker"], c2_dt_str)
                     if c3_open and c3_open > base_entry_p:
-                        actual_entry_p = round(c3_open * 1.002, 2)  # Buy at 0.2% above C3 Open
+                        actual_entry_p = round(c3_open * 1.002, 2)
                         gap_up_entries_count += 1
                     else:
                         actual_entry_p = base_entry_p
@@ -232,11 +259,12 @@ def generate_swing_strategy_statement(
                     bal_after_buy = current_balance - allocated_cap
 
                     trade_id = executed_trades_count + len(open_positions) + 1
+                    target_counts[rr_choice] = target_counts.get(rr_choice, 0) + 1
 
                     pos_info = {
                         "Trade_ID": trade_id,
                         "Ticker": cand["Ticker"],
-                        "Liquidity_Type": cand.get("Liquidity_Type_1to2", "Support Level"),
+                        "Liquidity_Type": cand.get("Liquidity_Type_1to2", cand.get("Liquidity_Type", "Support Level")),
                         "Support_Price": cand["Support_Price"],
                         "C1_Date": cand["C1_Date"],
                         "C2_Date": cand["C2_Date"],
@@ -252,6 +280,7 @@ def generate_swing_strategy_statement(
                         "Outcome": outcome_val
                     }
                     open_positions.append(pos_info)
+                    buy_holding_eq = sum(p["Total_Spend"] for p in open_positions)
 
                     statement_rows.append({
                         "Transaction_ID": tx_counter,
@@ -259,7 +288,7 @@ def generate_swing_strategy_statement(
                         "Type": "BUY (ENTRY)",
                         "Date": curr_dt.strftime("%Y-%m-%d"),
                         "Ticker": cand["Ticker"],
-                        "Liquidity_Source": cand.get("Liquidity_Type_1to2", "Support Level"),
+                        "Liquidity_Source": pos_info["Liquidity_Type"],
                         "Support_Price": cand["Support_Price"],
                         "Quantity": qty,
                         "Price": actual_entry_p,
@@ -270,6 +299,8 @@ def generate_swing_strategy_statement(
                         "Return_Pct": 0.0,
                         "Balance": bal_after_buy,
                         "Active_Position_Count": len(open_positions),
+                        "Holding_Equity_Value": buy_holding_eq,
+                        "Total_Portfolio_Value": bal_after_buy + buy_holding_eq,
                         "Target_RR_Mode": rr_choice,
                         "Outcome": "OPEN",
                         "Chart_PNG_URI": "N/A"
@@ -279,11 +310,16 @@ def generate_swing_strategy_statement(
         # STEP 2: EXITS SECOND for open trades on curr_dt
         closed_positions = []
         for pos in open_positions:
-            ex_dt = pd.to_datetime(pos["Exit_Date"])
-            if curr_dt >= ex_dt:
-                closed_positions.append(pos)
+            ex_dt_val = pos.get("Exit_Date")
+            if pd.isna(ex_dt_val) or ex_dt_val is None:
+                ex_dt = curr_dt
+            else:
+                ex_dt = pd.to_datetime(ex_dt_val)
 
-        for pos in closed_positions:
+            if curr_dt >= ex_dt:
+                closed_positions.append((pos, ex_dt))
+
+        for pos, ex_dt in closed_positions:
             open_positions.remove(pos)
             qty = pos["Quantity"]
             entry_p = pos["Entry_Price"]
@@ -333,6 +369,8 @@ def generate_swing_strategy_statement(
                 t_record = {**pos, "Exit_Price": exit_p, "Net_PnL": net_pnl, "Balance_After_Exit": current_balance}
                 chart_uri = plot_swing_trade_chart(t_record, trade_charts_dir)
 
+            sell_holding_eq = sum(p["Total_Spend"] for p in open_positions)
+
             statement_rows.append({
                 "Transaction_ID": tx_counter,
                 "Trade_ID": pos["Trade_ID"],
@@ -350,6 +388,8 @@ def generate_swing_strategy_statement(
                 "Return_Pct": ret_pct,
                 "Balance": current_balance,
                 "Active_Position_Count": len(open_positions),
+                "Holding_Equity_Value": sell_holding_eq,
+                "Total_Portfolio_Value": current_balance + sell_holding_eq,
                 "Target_RR_Mode": pos["ML_RR_Choice"],
                 "Outcome": pos["Outcome"],
                 "Chart_PNG_URI": chart_uri
@@ -390,7 +430,12 @@ def generate_swing_strategy_statement(
         "Losing_Trades": losing_trades_count,
         "Win_Rate_Pct": win_rate_pct,
         "Max_Drawdown_Pct": max_drawdown_pct,
-        "Total_Taxes_Paid": total_taxes_paid
+        "Total_Taxes_Paid": total_taxes_paid,
+        "Count_1to2": target_counts.get("1:2", 0),
+        "Count_1to3": target_counts.get("1:3", 0),
+        "Count_1to4": target_counts.get("1:4", 0),
+        "Count_1to5": target_counts.get("1:5", 0),
+        "Count_1to6": target_counts.get("1:6", 0)
     }
 
     try:
@@ -404,7 +449,8 @@ def generate_swing_strategy_statement(
         headers = [
             "Tx ID", "Trade ID", "Type", "Date", "Ticker", "Liquidity Source", "Support Price (Rs)",
             "Quantity", "Price (Rs)", "Total Spend (Rs)", "Gross PnL (Rs)", "Taxes/Charges (Rs)",
-            "Net PnL (Rs)", "Return (%)", "Account Balance (Rs)", "Active Position Count", "Target RR Mode", "Outcome", "Trade Graph Link"
+            "Net PnL (Rs)", "Return (%)", "Account Balance (Rs)", "Active Position Count",
+            "Holding Equity Value (Rs)", "Total Portfolio Value (Rs)", "Target RR Mode", "Outcome", "Trade Graph Link"
         ]
         ws_stmt.append(headers)
 
@@ -430,7 +476,9 @@ def generate_swing_strategy_statement(
                 r["Transaction_ID"], r["Trade_ID"], r["Type"], r["Date"], r["Ticker"],
                 r["Liquidity_Source"], r["Support_Price"], r["Quantity"], r["Price"],
                 r["Total_Spend"], r["Gross_PnL"], r["Statutory_Taxes"], r["Net_PnL"],
-                r["Return_Pct"], r["Balance"], r["Active_Position_Count"], r["Target_RR_Mode"], r["Outcome"], r["Chart_PNG_URI"]
+                r["Return_Pct"], r["Balance"], r["Active_Position_Count"],
+                r["Holding_Equity_Value"], r["Total_Portfolio_Value"],
+                r["Target_RR_Mode"], r["Outcome"], r["Chart_PNG_URI"]
             ]
             
             ws_stmt.append(row_data)
@@ -441,7 +489,7 @@ def generate_swing_strategy_statement(
                 cell.fill = fill
                 cell.alignment = Alignment(vertical="center")
 
-                if col_idx == 19 and r["Chart_PNG_URI"] != "N/A":
+                if col_idx == 21 and r["Chart_PNG_URI"] != "N/A":
                     uri = r["Chart_PNG_URI"]
                     cell.value = f'=HYPERLINK("{uri}", "View Plot Chart (PNG)")'
                     cell.hyperlink = uri
@@ -464,7 +512,6 @@ def generate_swing_strategy_statement(
 
     df_stmt.to_csv(csv_path, index=False)
 
-    # Generate Visualizations Suite for this Experiment
     generate_all_visualizations(
         df_daily_equity,
         output_plots_dir=custom_plots_dir,
