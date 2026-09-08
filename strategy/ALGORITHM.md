@@ -7,7 +7,7 @@ This is the procedure. Same steps every day, every book. Only starting cash and 
 **Code:** setup scan in `run_c1_entry_sl_matrix.py` / `run_top10_oracle_select.py`; features + walk-forward in `run_ml_target_books.py`; meta in `run_ml_next_search.py`; size in `run_ml_wave3.py` (`run_vol_managed`)  
 **Do-not-retry log:** [TRIED_EXPERIMENTS.md](TRIED_EXPERIMENTS.md)  
 **Audit:** [STRATEGY_AUDIT.md](STRATEGY_AUDIT.md)  
-**Next liquidity spec (not live):** [LIQUIDITY.md](LIQUIDITY.md) — swing low on Y/M/W, `N`/`N2` closes above that Low, valid until first daily touch.
+**Swing-low spec (not live):** [LIQUIDITY.md](LIQUIDITY.md) — Y/M/W swing, ≥2 candles both sides and ≥3 on one side, M2 wick-sweeps, close-below kills the level. M36 (N=3/N2=3) lost.
 
 ---
 
@@ -234,16 +234,22 @@ entries first · full exit at 1:2 or SL · net of Zerodha tax
 
 ## 9. Daily prediction (4:00 PM)
 
-`python swing_strategy/run_daily_swing_forecast.py`  
-Task: `StockBacktest_SwingForecast` · `run_daily_swing_forecast.bat` · every day 16:00
+`python swing_strategy/run_daily_all_forecasts.py`  
+Task: `StockBacktest_SwingForecast` · `run_daily_all_forecasts.bat` · **Mon–Fri 16:00** (no Saturday/Sunday)
+
+Downloads latest daily bars **once**, then scores all three books from that snapshot (no second download at 16:30):
+
+| File | Scanner |
+|------|---------|
+| `forecast_stocks/Swing_Live.txt` | Calendar Y/M/W min-low, Meta_P ≥ 0.38, top 32 |
+| `forecast_stocks/Swing_low.txt` | HTF swing-low, HGB meta ≥ 0.42, top 32 |
+| `forecast_stocks/Swing_PP.txt` | Same swing-low scan, ≥1m, Meta_P ≥ 0.48, top 16, paper-gate |
 
 - Before 16:00: last complete bar = previous trading day (do not use today’s partial candle).
 - At/after 16:00: last complete bar = today (weekday) or last weekday.
-- Downloads latest daily bars, finds pending A1 (C2 just completed, enter next open), scores `Meta_P`, keeps ≥ 0.38 / top 32.
-- Writes **text only** (no Excel):
-  - `forecast_stocks/Swing_<DD_Mon_YYYY>.txt` for the **entry** session
-  - `forecast_stocks/Swing.txt` overwritten each run  
-  Format: `NSE:NIFTY50-INDEX,BSE:SENSEX-INDEX,NSE:RELIANCE-EQ,...`
+- Watchlist copies: `C:\Users\parmp\Downloads\Watchlist\Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt`.
+- If Swing_PP paper-gate skips the session, `Swing_PP_ins.txt` is written; if trading is allowed that file is deleted.
+- One-book scripts (`run_daily_swing_forecast.py`, `run_daily_swing_low_forecast.py`, `run_daily_swing_pp_forecast.py`) still exist for a manual rerun; pass `--skip-fetch` if data is already on disk.
 
 ---
 
@@ -255,6 +261,8 @@ Task: `StockBacktest_SwingForecast` · `run_daily_swing_forecast.bat` · every d
 | Features + primary walk | `swing_strategy/run_ml_target_books.py` |
 | Meta-label | `swing_strategy/run_ml_next_search.py` (`walk_meta`, `select_meta`) |
 | Vol size + books | `swing_strategy/run_ml_wave3.py` (`run_vol_managed`) |
-| Feature table | `Reports/ML_Top5_Selector/Features_v6.parquet` |
-| Scores | `Reports/ML_Top5_Selector/Scored_v6_meta.parquet` |
+| Feature table | `Reports/LiquidityFix_IntactSupport/Features_v6.parquet` |
+| Scores | `Reports/LiquidityFix_IntactSupport/Scored_v6_meta.parquet` |
+| Daily forecast | `swing_strategy/run_daily_all_forecasts.py` → `Swing_Live.txt` + `Swing_low.txt` + `Swing_PP.txt` |
+| Parked swing-low | `get_swing_low_supports` + `run_swing_low_liquidity_eval.py` (M36, not live) |
 | Results / caveats | [BEST_STRATEGY.md](BEST_STRATEGY.md), [STRATEGY_AUDIT.md](STRATEGY_AUDIT.md) |

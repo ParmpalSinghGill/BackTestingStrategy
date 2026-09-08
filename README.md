@@ -1,6 +1,6 @@
 # Swing Trading Strategy Suite (Base Repository)
 
-A high-performance quantitative swing trading framework built in Python for Indian Equity markets (NSE/BSE). It uses walk-forward Machine Learning (Random Forest) models, dynamic Risk-Reward selection (1:2 / 1:3), True Realistic Fills execution ($C3 \text{ Open}$ gap fills, 0.2% gap-up entries, 0.1% gap exits), and an **Entries-First** capital allocation model.
+Quantitative swing trading for Indian equities (NSE/BSE). **Current verified best** is walk-forward XGBoost + meta-label + Moreira-Muir vol-managed 1:2 size on OPEN_BELOW + A1 setups. See [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md). Do-not-retry log: [strategy/TRIED_EXPERIMENTS.md](strategy/TRIED_EXPERIMENTS.md).
 
 ---
 
@@ -10,7 +10,11 @@ A high-performance quantitative swing trading framework built in Python for Indi
 * ⚡ **Subfolder Module**: [Intraday Trading Strategy Suite](intraday_strategy/README.md) (`intraday_strategy/`)
 * 📘 **LLM Realism Specification Guide**: [Guide/Realistic_guide.md](Guide/Realistic_guide.md) (Master 8-Rule Prompt for AI Agents)
 * 📊 **Account Statement & MTM Equity Guide**: [Guide/Account_Statement_guide.md](Guide/Account_Statement_guide.md) (21-Column Institutional Schema & MTM Valuation Rules)
-* 🧠 **Input Features & Target Labels Guide**: [Guide/Features_and_Labels_guide.md](Guide/Features_and_Labels_guide.md) (23 Pre-Entry Input Features & Multi-Class Ground-Truth Target Labels)
+* 📈 **Output Format & Tax Impact Guide**: [Guide/OutputFormatGuide.md](Guide/OutputFormatGuide.md) (Working PNG Hyperlinks, Visualizations & Before/After Tax CAGR Engine)
+* 🏆 **Current Best Strategy**: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md) (verified 5 Sep 2026 rules and net CAGRs)
+* ⚙️ **Algorithm (what it does)**: [strategy/ALGORITHM.md](strategy/ALGORITHM.md)
+* 📅 **Daily entries (4 PM)**: `python swing_strategy/run_daily_all_forecasts.py` — download once, then `Swing_Live.txt` (calendar Y/M/W lows), `Swing_low.txt`, and `Swing_PP.txt`
+* 📓 **Tried experiments (do not retry)**: [strategy/TRIED_EXPERIMENTS.md](strategy/TRIED_EXPERIMENTS.md)
 
 > 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. All historical datasets (`data/`, `data_daily/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored via `.gitignore`.
 
@@ -21,16 +25,21 @@ A high-performance quantitative swing trading framework built in Python for Indi
 ```
 .
 ├── swing_strategy/
-│   ├── run_strategy.py           # Main swing strategy runner & walk-forward ML model
-│   ├── run_multi_experiments.py  # Parallel multi-process 6-scenario experiment matrix
-│   ├── generate_statement.py     # Entries-First realistic execution engine & statement generator
-│   ├── visualizer.py             # Monthly/Yearly heatmaps, capital growth, and Chart.js HTML hover charts
-│   ├── strategy_engine.py        # Dataset builder & Random Forest training engine
-│   └── plotter.py                # Candlestick trade chart generator
+│   ├── run_ml_wave4.py           # Current best: meta-label + vol-managed 1:2
+│   ├── run_ml_next_search.py     # Meta-label Kelly (no vol scale)
+│   ├── run_ml_sized.py           # Score-weighted XGB only
+│   ├── run_scaled_1_3_4_strategy.py  # Previous no-ML baseline
+│   ├── tiered_liquidity_strategy_engine.py
+│   ├── generate_statement.py
+│   ├── visualizer.py
+│   └── plotter.py
+├── strategy/
+│   ├── BEST_STRATEGY.md          # Verified rules + net CAGRs
+│   └── TRIED_EXPERIMENTS.md      # Finished tests — do not retry
 ├── Guide/
-│   ├── Realistic_guide.md        # Master 8-Rule Realism Specification & Prompt Guide for LLMs
-│   ├── Account_Statement_guide.md# 21-Column Account Statement Schema & MTM Valuation Guide
-│   └── Features_and_Labels_guide.md # 23 Pre-Entry Input Features & Multi-Class Target Labels
+│   ├── Realistic_guide.md
+│   ├── Account_Statement_guide.md
+│   └── OutputFormatGuide.md
 ├── intraday_strategy/            # Intraday Trading Strategy Suite (See intraday_strategy/README.md)
 ├── src/                          # Shared brokerage tax & fee calculators
 │   └── analysis/
@@ -42,28 +51,16 @@ A high-performance quantitative swing trading framework built in Python for Indi
 
 ---
 
-## 🚀 Swing Strategy Execution & Features
+## 🚀 Current Best Run
 
-### 1. Run Single Swing Strategy Backtest & Statement
 ```bash
-python swing_strategy/run_strategy.py
+python swing_strategy/run_ml_wave4.py
 ```
-- Trains walk-forward Random Forest model on 2,372 stocks across 16 years (2010–2026).
-- Simulates Zerodha (zero brokerage) and FYERS (flat ₹20) net account balances.
-- Generates Excel account statement with native clickable `=HYPERLINK(...)` trade chart links.
 
-### 2. Run Parallel Multi-Experiment Batch Suite
-```bash
-python swing_strategy/run_multi_experiments.py
-```
-- Runs 6 Capital x Risk Cap scenarios simultaneously across CPU cores:
-  1. `Exp_50k_1.0k`: ₹50,000 Capital | ₹1,000 Risk Cap
-  2. `Exp_50k_0.5k`: ₹50,000 Capital | ₹500 Risk Cap (**+1,952.62% Net Return / 20.79% CAGR**)
-  3. `Exp_100k_1.0k`: ₹100,000 Capital | ₹1,000 Risk Cap
-  4. `Exp_100k_0.5k`: ₹100,000 Capital | ₹500 Risk Cap (**+870.47% Net Return / 15.26% CAGR**)
-  5. `Exp_200k_1.0k`: ₹200,000 Capital | ₹1,000 Risk Cap
-  6. `Exp_200k_0.5k`: ₹200,000 Capital | ₹500 Risk Cap (**+2,322.16% Net Return / 22.04% CAGR**)
-- Exports master comparative summary report (`Master_Experiments_Comparison.xlsx`).
+- Same selector for every book; only capital and risk change.
+- Rules and **verified** net CAGRs: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md).
+- Last verified net (Zerodha, 2010–2026): **₹50k/₹500 +36.52%**, **₹100k/₹500 +32.50%**, **₹100k/₹1k +37.03%** (meta-label top 32, `Meta_P ≥ 0.38`, vol-managed size).
+- Previous no-ML baseline (₹50k/₹1k scaled 1:1/1:3/1:4): +6.91% net, 78% DD.
 
 ---
 

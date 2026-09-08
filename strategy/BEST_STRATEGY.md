@@ -5,7 +5,7 @@
 **Window:** 2010-01-01 to 2026-08-28  
 **Algorithm (step-by-step):** [strategy/ALGORITHM.md](ALGORITHM.md)  
 **Tried-and-do-not-repeat log:** [strategy/TRIED_EXPERIMENTS.md](TRIED_EXPERIMENTS.md)  
-**Intended swing-low liquidity (not coded yet):** [strategy/LIQUIDITY.md](LIQUIDITY.md)
+**Swing-low liquidity spec (coded, not live — M36/M38 lost):** [strategy/LIQUIDITY.md](LIQUIDITY.md)
 
 Do not cite README ML CAGRs (+870% / +1,952% / +2,322%), Dynamic ML +35,840%, C1-fully-submerged, Confirmed, or SwingNoMl. Those are stale or lost after tax.
 
@@ -50,6 +50,9 @@ Walk-forward, Indian delivery tax, entries-first. **Two books are over 35%.** Ga
 |---|---|
 | Meta t0.38 top28 + vol (M31) | +36.34 / +32.27 / +36.89 |
 | Meta t0.40 top24 + vol (M28) | +35.94 / +31.70 / +36.31 |
+| Swing-low 2/2 or 3-on-one-side (M40) | Best M2=0 +21.33 / +20.21 / +22.04; still below live; ~43k setups |
+| Swing-low 2/2 + 3-on-one-side (M38) | Best M2=2 +23.34 / +19.99 / +23.84; still below live; ~37k setups |
+| Swing-low Y/M/W N=3/N2=3 (M36) | Best M2=1 +12.43 / +13.36 / +14.08; thin ~29k universe |
 | Meta top-20 + vol (M27) | +35.53 / +31.36 / +35.91 |
 | Meta + Kelly, no vol (M18) | +31.39 / +26.73 / +31.82 |
 | Vol-managed only (M21) | +31.82 / +29.02 / +32.91 |

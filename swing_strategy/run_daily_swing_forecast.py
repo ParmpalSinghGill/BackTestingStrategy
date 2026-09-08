@@ -1,13 +1,23 @@
 """
 Daily live entries: OPEN_BELOW + A1 + meta-label (same rules as ALGORITHM.md).
 
-Clock (local):
-  before 16:00 → last complete bar = previous trading day (ignore today's partial bar)
-  at/after 16:00 → last complete bar = today if it is a weekday, else last weekday
+Liquidity is the live scanner only:
+  Year/Month/Week calendar min-Low, skip flat/doji HTF prints,
+  first wick through marks the level swept (never reused),
+  5% lower-level swap uses intact (not yet swept) supports only.
+  That is the KHAITAN correction. Do not call get_swing_low_supports here.
 
-Writes only text files (no Excel):
-  forecast_stocks/Swing_<DD_Mon_YYYY>.txt   dated list (entry session)
-  forecast_stocks/Swing.txt                 overwritten each run
+Clock (local):
+  before 16:00 - last complete bar = previous trading day (ignore today's partial bar)
+  at/after 16:00 - last complete bar = today if it is a weekday, else last weekday
+
+Writes only text files (no Excel). Names say Live so this is not the parked swing-low scanner:
+  forecast_stocks/Swing_Live_<DD_Mon_YYYY>.txt   dated list (entry session)
+  forecast_stocks/Swing_Live.txt                 overwritten each run
+
+  How the list is built: Year/Month/Week calendar min-Low (skip flat/doji),
+  first wick through marks swept, 5% swap only among intact supports,
+  C1 open-below + A1, Meta_P >= 0.38, daily top 32.
 """
 from __future__ import annotations
 
@@ -29,7 +39,7 @@ sys.path.insert(0, str(BASE_DIR))
 from swing_strategy.run_c1_entry_sl_matrix import MAX_POST_SWEEP, START, _c1_match
 from swing_strategy.run_ml_next_search import META_FEAT
 from swing_strategy.run_ml_target_books import CORE_COLS
-from swing_strategy.run_ml_top5_selector import OUT_BASE, _rsi, _sma
+from swing_strategy.run_ml_top5_selector import _rsi, _sma
 from swing_strategy.tiered_liquidity_strategy_engine import (
     DATA_DAILY_DIR,
     TF_RANK,
@@ -39,8 +49,10 @@ from swing_strategy.tiered_liquidity_strategy_engine import (
 from src.backtest_engine.backtest_support_liquidity_strategy import get_all_stock_supports
 
 FORECAST_DIR = BASE_DIR / "forecast_stocks"
-FEAT_PATH = OUT_BASE / "Features_v6.parquet"
-SCORED_PATH = OUT_BASE / "Scored_v6_xgb.parquet"
+WATCHLIST_DIR = Path(r"C:\Users\parmp\Downloads\Watchlist")
+LIVE_ML_DIR = BASE_DIR / "Reports" / "LiquidityFix_IntactSupport"
+FEAT_PATH = LIVE_ML_DIR / "Features_v6.parquet"
+SCORED_PATH = LIVE_ML_DIR / "Scored_v6_meta.parquet"
 CUT = 16, 0
 META_MIN = 0.38
 TOP_N = 32
@@ -342,14 +354,18 @@ def train_models(asof: pd.Timestamp):
 
 def write_txt(symbols: list[str], entry_day: datetime.date) -> None:
     FORECAST_DIR.mkdir(parents=True, exist_ok=True)
+    WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
     head = ["NSE:NIFTY50-INDEX", "BSE:SENSEX-INDEX"]
     line = ",".join(head + symbols)
-    dated = FORECAST_DIR / f"Swing_{entry_day.strftime('%d_%b_%Y')}.txt"
-    live = FORECAST_DIR / "Swing.txt"
-    for path in (dated, live):
+    stamp = entry_day.strftime("%d_%b_%Y")
+    paths = [
+        FORECAST_DIR / f"Swing_Live_{stamp}.txt",
+        FORECAST_DIR / "Swing_Live.txt",
+        WATCHLIST_DIR / "Swing_Live.txt",
+    ]
+    for path in paths:
         path.write_text(line, encoding="utf-8")
-    print(f"[write] {dated}  ({len(symbols)} names)", flush=True)
-    print(f"[write] {live}", flush=True)
+        print(f"[write] {path}  ({len(symbols)} names)", flush=True)
 
 
 def main() -> None:
@@ -359,6 +375,9 @@ def main() -> None:
     args = ap.parse_args()
 
     now = datetime.now()
+    if now.weekday() >= 5 and not args.asof:
+        print(f"[clock] {now:%A %Y-%m-%d} weekend - skip (no Sat/Sun run)", flush=True)
+        return
     asof_d = datetime.strptime(args.asof, "%Y-%m-%d").date() if args.asof else last_complete_session(now)
     asof = pd.Timestamp(asof_d)
     entry_d = next_session(asof_d)

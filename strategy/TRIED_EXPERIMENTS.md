@@ -2,7 +2,7 @@
 
 Log of finished tests. **Do not re-run these** unless the universe, label, or engine changed. Add a new row when you finish a test.
 
-Last updated: 6 Sep 2026
+Last updated: 8 Sep 2026
 
 ---
 
@@ -63,6 +63,18 @@ Walk-forward yearly, features before entry + today’s open. Universe ~172k setu
 | M33 | t0.36 top28; t0.38 top32; t0.36 top32 | t0.38 top32 **+36.52 / +32.50 / +37.03** on the *old* universe (reused swept doji highs). Axis saturating | Don’t repeat; don’t go top40 on this axis |
 | M34 | Per-name vol on live t0.38 top32 | +36.55 / +32.49 / +37.01. Tie on min, better DD | Yes |
 | M35 | Bugfix: skip flat/doji HTF prints; 5% rule uses **intact** supports only (no reused swept lows / upper liquidity) | **Live:** t0.38 top32 vol **+36.39 / +31.38 / +36.81**, DD 32.4 / 28.6 / 30.8. Universe 159k vs 172k | Don’t reintroduce swept-level substitution |
+| M36 | Swing-low HTF liquidity (`LIQUIDITY.md`): N=3 / N2=3, wick-sweeps ≤ M2, close-below kills level; same C1/C2/ML | Best M2=1 **+12.43 / +13.36 / +14.08**, DD 55 / 51 / 55. M2=0 **+6.02 / +11.77 / +12.21**. M2=2 **+14.54 / +11.79 / +14.96**. Universe ~29k vs 159k | Don’t promote; don’t re-grid M2 on this N/N2 |
+| M37 | Swing-low 2010-01-01 to 2016-12-31, ML vs NoML, 6 capital/risk books | Best ML **+16.84%** (M2=0, ₹200k/₹500). Live three books ML all **< +11%**. NoML mostly ≤ +4%, several negative | Don’t promote; 2010–2016 does not rescue swing-low |
+| M38 | Swing-low 2/2 both sides + 3 on one side; skip 2 dailies after source; confirm after 2 right HTF bars (3 if left only has 2); same C1/C2/ML | Best M2=2 **+23.34 / +19.99 / +23.84**, DD 39 / 35 / 39. M2=0 **+22.59 / +19.81 / +23.13**. M2=1 **+17.93 / +17.31 / +18.63** with 47–58% DD. Universe ~37k vs 159k | Don’t promote; don’t re-grid M2 on this neighbour rule |
+| M39 | Same as M38, window 2010-01-01 to 2016-12-31, ML vs NoML, 6 books | Best live-three ML M2=2 **+32.47 / +30.49 / +33.11**. Peak ML **+42.39%** (M2=2, ₹50k/₹1k). NoML still ~0% / negative | Don’t promote; short window is not the live book |
+| M40 | Swing-low **or** neighbour rule: 2 on both sides **or** 3 on one side; always ≥2 after the low (immediate next HTF bar is never a trade bar); skip 2 dailies after source; same C1/C2/ML | Best M2=0 **+21.33 / +20.21 / +22.04**, DD 46 / 42 / 44. M2=2 **+21.27 / +19.68 / +21.96**. M2=1 **+19.96 / +19.63 / +21.02** with 45–58% DD. Universe ~43–44k vs 159k | Don’t promote; looser than M38 and worse CAGR |
+| M41 | Locked swing-low **AND** rule (2 both + 3 one, M2=2). Hunt: C1 OPEN/CLOSE/HIGH_BELOW × A1/A2/A3/B/C2-close × 1:2/1:3; XGB/HGB/MLP/CatBoost meta; frozen risk ₹500–₹10k; **% of equity** 1–10%. No future features. | Best tradable **+47.19%** net (HGB meta t0.42 top32, **2% of current equity**, vol 0.04, 1,568 trades, 51.9% DD, ₹50k start). Frozen-rupee peak **+43.51%** at ₹8,000 (still <45). Oracle lookahead ceiling **+37.6%** at ₹500 / **+43.0%** at ₹1k / **+54.4%** at ₹4k. C2-close and 1:3 lost to OPEN_BELOW+A1 1:2 after ML | 45% needs **% of equity** (or huge frozen rupee). Do not cite 47% as a ₹500 book. Don’t re-grid this exact HGB/t0.42/top32/2% combo |
+| M42 | Same 2% equity HGB book: after K consecutive closed losses, pause D days or skip next T setups (then resume). Not a permanent halt (that was M24). | After 3+ losses, next-trade WR falls 30%→21%. Best DD-keep-CAGR: pause 5 SL / 20d **+44.25% / 36.5% DD**; skip 2 SL / 10 trades **+45.50% / 36.8%**. Best grid print: skip 5 SL / 5 trades **+52.01% / 40.5% DD** (DD moves to 2024-09-20→2025-03-20). Aggressive pauses crush CAGR | Don’t treat the +52% skip as live without a hold-out; grid was fit on the full sample |
+| M42b | Wider search on the same 2% HGB book: skip Feb, rolling WR, DD circuit, size-cut, same-day multi-loss pause, K×D combos | Best both: after **6 SLs pause 15d** **+52.79% / 38.1% DD**. Best DD keep ~47%: **2 losses same day → pause 10d** **+47.32% / 33.8% DD**. Skip-Feb + skip5 **+58.71%** but DD **56.3%** (worse). Rolling-WR and DD-circuit gates often killed CAGR | Don’t promote skip-February; seasonal fit. Prefer 6-SL/15d or same-day-2-loss/10d |
+| M43 | Same 2% HGB book, but gate **real fills** using **paper** 1:2/SL of trades not taken. Shadow all 37,485 setups or ML-only 10,903. Paper result applied only after Exit_Date (next session). Consecutive paper SLs, rolling paper WR, last-N SL ratio. | Consecutive paper SLs on **all** over-pause (CAGR ~5–34%). Best keep-CAGR: last **20 all-setup** paper exits, pause while SL ratio ≥75% **+47.64% / 36.9% DD** (n=1,020; DD 2018-05-07→2019-06-21). Best both: last **20 ML paper** WR <22% **+54.16% / 37.6% DD** (n=1,152; DD 2024-09-20→2025-05-07). Peak CAGR: last **30 ML** SL≥75% **+61.29% / 46.4% DD** (still 2010–11 trough). `ml_roll20_0.22`, `ml_roll20_0.25`, `ml_slratio20_0.8` are the **same discrete rule** (4/20 wins). | Don’t treat +54/+61 as live; full-sample fit. Don’t re-grid this exact paper window. Prefer SL-ratio over consecutive-K on the all-setup shadow |
+| M44 | Same swing-low C1/A1/HGB/2% book, but **only old panic-point liquidity**: HTF swing low must be ≥1 / ≥2 / ≥3 calendar months before Entry_Date. Fresh weekly lower-lows dropped. Same-scores filter vs HGB+meta retrain. | Fresh &lt;1m is 969 setups, **almost all Weekly**, WR 37% / mean R 0.12 vs ≥3m WR 39% / 0.19 R. **Retrain ≥1m: 2% book +49.43% / 34.7% DD** (n=1,486) vs baseline +47.19% / 51.9%. Same-scores ≥1m +45.25% / 50.2% DD. ≥2m and ≥3m kill CAGR (~+27% / +26% retrain; frozen ₹500 ~+17 / +14). Frozen 1m still ~+23%, below live calendar lows. | Don’t promote 2m/3m. 1m retrain DD cut is full-sample; don’t put in Swing_low.txt yet. Don’t re-grid age on this exact HGB book |
+| M45 | ≥2m liquidity + **Nifty-scaled min volume** (no fixed share count): C2 turnover/Nifty, shares/Nifty, turnover/Nifty², plus vol_ratio20 / rel_dolvol floors. Then Meta_P / top-N / % equity / HGB+XGB retrain / paper gates / filled-SL pause / DD circuit. Target 50% CAGR and &lt;25% DD. | Volume floors on default t0.42/top32/2% **hurt** vs ≥2m baseline +29%/50% DD. Lift is **shares ≥ 0.487×Nifty** (15th pctile; ~2.4k shares at Nifty 5k, ~12k at 25k) + **Meta_P≥0.48**. 2% equity **+45.05% / 34.4% DD**. 4% equity **+51.07% / 49.9% DD**. After 6 filled SLs pause 15d: **+53.22% / 30.3% DD** (n=565). DD circuit at 25–30% wipes CAGR (~−3%). Frozen ₹500 **+13.5%**. **No book hit 50% CAGR and DD&lt;25.** Floor for 50% CAGR is ~30% DD. | Don’t put in Swing_low.txt. Don’t cite 53% as a ₹500 book. Don’t re-grid this exact sh/Nifty×t0.48×4%×pause6/15 combo. 25% DD is incompatible with 50% CAGR on the ≥2m book |
+| M46 | Locked **2%** equity (not 4%). Fair daily-bar BE: until +1R, SL is checked first on the bar; after 1R, hunt 1:2 then scratch at entry. ≥1m HGB retrain, Meta_P≥0.48 top 16. Vol-scale cap **1.3** (default 1.8), rank cap **1.2** (default 1.4). If **2 filled losses the same day**, pause **8** days. | **+53.40% / 24.5% DD**, n=1,360, ₹50k start. Same-bar MFE-only BE was invalid (optimistic +57%/24% on ≥2m collapsed to ~+8% SL-first). ≥2m at 2% still cannot print 50% CAGR and DD&lt;25 together without the invalid BE. | Full-sample pause. Do not cite as ₹500. Not in Swing_low.txt. Don’t treat MFE-only BE as live. Don’t re-grid this exact 1.3/1.2/dl2_8 stack on this book |
 
 ---
 
@@ -74,13 +86,12 @@ Walk-forward yearly, features before entry + today’s open. Universe ~172k setu
 - Feature design note (C1/C2 geometry) — implemented in v6
 - Joubert (JFDS 2022) Meta-Labeling: Theory and Framework — take/skip + size from P(win)
 - Moreira & Muir (JF 2017) Volatility-Managed Portfolios — scale risk when recent vol is high (M21)
+- CatBoost (Prokhorenkova et al., 2018) — ordered boosting; tried M41, no beat of HGB
+- Fixed-fraction / percent-of-equity size (Vince / standard futures sizing) — M41 2% of current equity
 
 ---
 
 ## Not tried yet (allowed next)
 
-- CatBoost walk-forward (package not installed)
-- ML ranker on the old close-below TouchPlannedEntry trade list
-- Other matrix entries (A2, A3, B) with ML — only A1 was ranked
 - Torch listwise / set ranker over the day’s candidates
 - Full TrendFinder 5/20/50/100d pack (M30 only added ADX/Supertrend/EMA/linreg20)
