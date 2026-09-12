@@ -62,6 +62,31 @@ def be_fair(entry_idx, entry, sl, opens, highs, lows, n, rr=2.0):
     return px, last, (px - entry) / risk
 
 
+def be_fair_after_1r(entry_idx, start_idx, entry, sl, opens, highs, lows, n, rr: float):
+    """Already +1R and still in. Hunt TP from start_idx (next session after 1R close). Stop is BE."""
+    risk = entry - sl
+    last = n - 1
+    if risk <= 0.05 or start_idx >= n:
+        px = round(float(opens[last]), 2)
+        return px, last, (px - entry) / risk
+    tp = entry + rr * risk
+    be = entry
+    for m in range(start_idx, n):
+        o, h, l = float(opens[m]), float(highs[m]), float(lows[m])
+        if m > entry_idx and o < be:
+            px = round(o * 0.998, 2)
+            return px, m, (px - entry) / risk
+        if m > entry_idx and o > tp:
+            px = round(o * 0.998, 2)
+            return px, m, (px - entry) / risk
+        if h >= tp:
+            return round(tp, 2), m, float(rr)
+        if l <= be:
+            return round(be, 2), m, 0.0
+    px = round(float(opens[last]), 2)
+    return px, last, (px - entry) / risk
+
+
 def rewrite(picked: pd.DataFrame, fn) -> pd.DataFrame:
     cache: dict = {}
     rows = []

@@ -34,8 +34,9 @@ MASTER = OUT / "Master_StartYear_Comparison.xlsx"
 CSV = OUT / "StartYear_CAGR.csv"
 LOG = OUT / "StartYear_CAGR.json"
 RULE = (
-    "Swing_PP RR stack | after +1R: P6>=0.85->1:6 else P5>=0.85->1:5 "
-    "else P3>=0.80->1:3 else 1:2 | fair BE | 2% equity | paper-gate last 50 fail%>=74%"
+    "Swing_PP RR stack | after 1R close, TP next bar: P6>=0.85->1:6 else P5>=0.85->1:5 "
+    "else P3>=0.80->1:3 else 1:2 | no upgrade if 1R bar already hit 2R/SL | "
+    "fair BE | 2% equity | paper-gate last 50 fail%>=74%"
 )
 CHART_REL_PREFIX = "../../../Plots/SwingPP_RR/trade_charts"
 

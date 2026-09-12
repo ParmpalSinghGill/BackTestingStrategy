@@ -10,8 +10,9 @@ target when a purged walk-forward model is precise enough to clear that bar.
 Live-valid decision points
 --------------------------
 - at_entry: choose 1:2 vs 1:3/1:4/1:5 from features known at C3 open.
-- at_1R: enter with 1:2; after +1R (BE armed) optionally replace TP with 1:3+.
-  Path-to-1R is known then; 2R order is not filled yet.
+- at_1R: enter with 1:2; after the first +1R bar *closes*, optionally replace TP
+  with 1:3+. New TP starts next session. No upgrade if that 1R bar already
+  tagged 2R (1:2 would have filled) or SL, or if it is the last bar.
 - scale50: half qty keeps 1:2, half uses the chosen higher target (two tickets).
 
 Paper-gate fail% always uses the original 1:2 paper book so skip-days match M46.
@@ -32,14 +33,14 @@ sys.path.insert(0, str(BASE))
 
 from src.analysis.indian_brokerage_calculator import calculate_indian_trade_charges
 from swing_strategy.run_2pct_50_25_hunt import CAPITAL, PCT, TV
-from swing_strategy.run_2pct_valid_hunt import be_fair
+from swing_strategy.run_2pct_valid_hunt import be_fair, be_fair_after_1r
 from swing_strategy.run_ml_target_books import CORE_COLS
 from swing_strategy.run_ml_top5_selector import _metrics
 from swing_strategy.run_pred_paper_gate import M46, exits_by_day, load_pred_list
 from swing_strategy.tiered_liquidity_strategy_engine import _load_daily
 
 OUT = BASE / "Reports" / "SwingLow_OldLiquidity"
-CACHE = OUT / "Pred_rr_path_cache.parquet"
+CACHE = OUT / "Pred_rr_path_cache_nextbar.parquet"
 LOG = OUT / "swing_pp_rr_classifier.json"
 BASELINE_CAGR = 55.41
 BASELINE_DD = 24.5
@@ -182,20 +183,46 @@ def scan_one_full(entry_idx, entry, sl, opens, highs, lows, closes, vols, n) -> 
         out["h2_high_R"] = f["h2_high_R"]
         out["h2_gap_thru"] = f["h2_gap_thru"]
         out["h2_close_thru"] = f["h2_close_thru"]
-    for rr in (2.0, 3.0, 4.0, 5.0, 6.0):
-        px, xidx, rv = _be(entry_idx, entry, sl, opens, highs, lows, n, rr)
+
+    px2, x2, r2v = _be(entry_idx, entry, sl, opens, highs, lows, n, 2.0)
+    out["px_2"] = float(px2)
+    out["xidx_2"] = int(x2)
+    out["r_2"] = float(r2v)
+    out["win_2"] = int(float(r2v) >= 1.5)
+    can_upgrade = (
+        hit1 is not None
+        and hit1 < n - 1
+        and float(lows[hit1]) > sl
+        and float(highs[hit1]) < r2
+    )
+    out["can_upgrade"] = int(can_upgrade)
+    for rr in (3.0, 4.0, 5.0, 6.0):
         k = int(rr)
-        out[f"px_{k}"] = float(px)
-        out[f"xidx_{k}"] = int(xidx)
-        out[f"r_{k}"] = float(rv)
-        out[f"win_{k}"] = int(float(rv) >= rr - 0.5)
+        if can_upgrade:
+            px, xidx, rv = be_fair_after_1r(
+                entry_idx, hit1 + 1, entry, sl, opens, highs, lows, n, rr
+            )
+            out[f"px_{k}"] = float(px)
+            out[f"xidx_{k}"] = int(xidx)
+            out[f"r_{k}"] = float(rv)
+            out[f"win_{k}"] = int(float(rv) >= rr - 0.5)
+        else:
+            out[f"px_{k}"] = float(px2)
+            out[f"xidx_{k}"] = int(x2)
+            out[f"r_{k}"] = float(r2v)
+            out[f"win_{k}"] = 0
     return out
 
 
 def build_cache(base: pd.DataFrame) -> pd.DataFrame:
     if CACHE.exists():
         c = pd.read_parquet(CACHE)
-        if len(c) == len(base) and "win_6" in c.columns and "arm_close_R" in c.columns:
+        if (
+            len(c) == len(base)
+            and "win_6" in c.columns
+            and "arm_close_R" in c.columns
+            and "can_upgrade" in c.columns
+        ):
             print(f"[cache] {CACHE.name} n={len(c):,}", flush=True)
             return c
     cache: dict = {}
@@ -261,6 +288,14 @@ def build_cache(base: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def upgrade_mask(df: pd.DataFrame) -> pd.Series:
+    if "can_upgrade" in df.columns:
+        return pd.to_numeric(df["can_upgrade"], errors="coerce").fillna(0).astype(int) == 1
+    armed = pd.to_numeric(df.get("armed", 0), errors="coerce").fillna(0) == 1
+    hi = pd.to_numeric(df.get("arm_high_R"), errors="coerce").fillna(99.0)
+    return armed & (hi < 2.0)
+
+
 def _feat_cols(df: pd.DataFrame, extra: list[str]) -> list[str]:
     cols = []
     for c in ENTRY_FEAT + extra:
@@ -316,6 +351,64 @@ def walk_proba(df: pd.DataFrame, ycol: str, feats: list[str], mask: pd.Series, m
         return pd.Series(np.nan, index=df.index)
     scored = pd.concat(parts, ignore_index=False)
     return scored.reindex(df.index)["p"]
+
+
+def train_at_1r_models(df: pd.DataFrame, asof, min_train: int = 180) -> dict:
+    """Current-year walk-forward 1R models: train years < asof.year, labels purged."""
+    from xgboost import XGBClassifier
+
+    asof = pd.Timestamp(asof)
+    y = int(asof.year)
+    cutoff = pd.Timestamp(f"{y}-01-01")
+    df = df.copy()
+    df["Entry_Date"] = pd.to_datetime(df["Entry_Date"])
+    lab = pd.to_datetime(df["label_date"])
+    mask = upgrade_mask(df)
+    train = df[(df["Entry_Date"].dt.year < y) & (lab < cutoff) & mask]
+    feats = _feat_cols(df, PATH1)
+    out: dict = {}
+    for ycol in ("win_3", "win_5", "win_6"):
+        if ycol not in train.columns or len(train) < min_train or train[ycol].nunique() < 2:
+            print(f"    [rr] skip {ycol} train={len(train):,}", flush=True)
+            out[ycol] = None
+            continue
+        pos = float(train[ycol].mean())
+        spw = (1.0 - pos) / max(pos, 1e-6)
+        clf = XGBClassifier(
+            n_estimators=140,
+            max_depth=3,
+            learning_rate=0.05,
+            subsample=0.85,
+            colsample_bytree=0.75,
+            min_child_weight=12,
+            reg_lambda=2.0,
+            n_jobs=4,
+            eval_metric="logloss",
+            tree_method="hist",
+            scale_pos_weight=min(spw, 4.0),
+        )
+        use = [c for c in feats if c in train.columns]
+        xtr = train[use].to_numpy(np.float32)
+        xtr = np.nan_to_num(xtr, nan=0.0, posinf=0.0, neginf=0.0)
+        clf.fit(xtr, train[ycol].to_numpy(np.int32))
+        out[ycol] = (clf, use)
+        print(f"    [rr] {ycol} train={len(train):,} pos={pos:.3f} feats={len(use)}", flush=True)
+    return out
+
+
+def score_at_1r(models: dict, feat_row: dict) -> dict:
+    """P(win 1:3/5/6 | 1R close). Missing model -> nan."""
+    out = {"p3_1r": float("nan"), "p5_1r": float("nan"), "p6_1r": float("nan")}
+    key = {"win_3": "p3_1r", "win_5": "p5_1r", "win_6": "p6_1r"}
+    for ycol, dest in key.items():
+        pack = models.get(ycol)
+        if not pack:
+            continue
+        clf, cols = pack
+        x = np.array([[float(feat_row.get(c, 0.0) or 0.0) for c in cols]], dtype=np.float32)
+        x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+        out[dest] = float(clf.predict_proba(x)[0, 1])
+    return out
 
 
 def oos_table(y: np.ndarray, p: np.ndarray, thresholds: list[float]) -> list[dict]:
@@ -564,13 +657,15 @@ def main() -> None:
             df[c] = pd.to_datetime(df[c])
     df["armed"] = pd.to_numeric(df.get("armed", 0), errors="coerce").fillna(0).astype(int)
     df["hit2"] = pd.to_numeric(df.get("hit2", 0), errors="coerce").fillna(0).astype(int)
+    df["can_upgrade"] = upgrade_mask(df).astype(int)
     for k in (2, 3, 4, 5):
         df[f"win_{k}"] = pd.to_numeric(df.get(f"win_{k}", 0), errors="coerce").fillna(0).astype(int)
 
     n = len(df)
     print(
-        f"universe {n:,}  armed {int(df.armed.sum()):,}  hit2 {int(df.hit2.sum()):,}  "
-        f"win3 {int(df.win_3.sum()):,} win4 {int(df.win_4.sum()):,} win5 {int(df.win_5.sum()):,}",
+        f"universe {n:,}  armed {int(df.armed.sum()):,}  can_upgrade {int(df.can_upgrade.sum()):,}  "
+        f"hit2 {int(df.hit2.sum()):,}  win3 {int(df.win_3.sum()):,} win4 {int(df.win_4.sum()):,} "
+        f"win5 {int(df.win_5.sum()):,}",
         flush=True,
     )
 
@@ -584,8 +679,8 @@ def main() -> None:
     df["p4_entry"] = walk_proba(df, "win_4", entry_cols, all_mask)
     df["p5_entry"] = walk_proba(df, "win_5", entry_cols, all_mask)
 
-    print("[wf] at-1R P(win 1:3/4/5 | armed) ...", flush=True)
-    armed_mask = df["armed"] == 1
+    print("[wf] at-1R P(win 1:3/4/5 | still in at 1R close) ...", flush=True)
+    armed_mask = upgrade_mask(df)
     df["p3_1r"] = walk_proba(df, "win_3", arm_cols, armed_mask)
     df["p4_1r"] = walk_proba(df, "win_4", arm_cols, armed_mask)
     df["p5_1r"] = walk_proba(df, "win_5", arm_cols, armed_mask)
@@ -603,7 +698,7 @@ def main() -> None:
             th,
         ),
     }
-    print("OOS precision (at-1R, win_3 among armed):", flush=True)
+    print("OOS precision (at-1R, win_3 among can_upgrade):", flush=True)
     for row in acc["arm_win3"]:
         print(f"  t={row['t']:.2f}  n={row['n_flag']:4d}  prec={row['precision']:.1%}  rec={row['recall']:.1%}", flush=True)
 
@@ -656,8 +751,8 @@ def main() -> None:
         ch = choose_ladder(df["p3_entry"], df["p4_entry"], df["p5_entry"], t3, t4, t5, None)
         run_policy(f"entry_ladder_{t3:.2f}_{t4:.2f}_{t5:.2f}", ch)
 
-    print("\n===== at-1R XGB (raise TP after BE arm) =====", flush=True)
-    armed = df["armed"].to_numpy() == 1
+    print("\n===== at-1R XGB (raise TP after 1R close, next bar) =====", flush=True)
+    armed = upgrade_mask(df).to_numpy()
     for t3 in (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90):
         ch = choose_ladder(df["p3_1r"], df["p4_1r"], df["p5_1r"], t3, None, None, armed)
         run_policy(f"arm_1to3_t{t3:.2f}", ch)

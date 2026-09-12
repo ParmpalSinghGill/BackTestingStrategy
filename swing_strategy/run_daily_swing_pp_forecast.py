@@ -1,20 +1,27 @@
 """
-Daily Swing_PP entries: swing-low OPEN_BELOW + A1, M46 paper-gate book.
+Daily Swing_PP entries: swing-low OPEN_BELOW + A1, M46 paper-gate book,
+plus next-bar RR after a +1R close.
 
 Same liquidity scan as Swing_low. Then:
   liquidity age >= 1 month
   HGB + XGB meta trained on >=1m history
   Meta_P >= 0.48, daily top 16
-  skip new entries if last 50 predicted paper results failed >= 74%
+  skip NEW entries if last 50 predicted paper results failed >= 74%
+  new names enter 1:2; after first +1R bar closes, maybe raise TP from next session
+  (P6>=0.85->1:6 else P5>=0.85->1:5 else P3>=0.80->1:3). No raise if that bar
+  already tagged 2R or SL.
 
 Writes (never touches Swing_low / Swing_Live):
   forecast_stocks/Swing_PP.txt
   forecast_stocks/Swing_PP_<DD_Mon_YYYY>.txt
   Watchlist/Swing_PP.txt
+  forecast_stocks/Swing_PP_RR.txt  (TP raises for next session)
+  Watchlist/Swing_PP_RR.txt
 
 Instruction file Swing_PP_ins.txt (forecast + Watchlist + dated copy):
-  Written when there is nothing to enter (paper-gate skip, or no Meta_P names).
-  Date and why are inside the file. Deleted only when names are published.
+  Written when there is nothing NEW to enter (paper-gate skip, or no Meta_P names).
+  RR raises are still written to Swing_PP_RR.txt. Date and why are inside the ins file.
+  Ins is deleted only when new names are published.
 """
 from __future__ import annotations
 
@@ -52,9 +59,17 @@ from swing_strategy.run_daily_swing_low_forecast import (
     train_models,
 )
 from swing_strategy.run_pred_paper_gate import gate_asof, load_pred_list
+from swing_strategy.run_swing_pp_rr_live import (
+    add_pending_entries,
+    load_open_book,
+    load_rr_models,
+    save_open_book,
+    scan_upgrades,
+)
 
 TAG = "Swing_PP"
 INS_NAME = "Swing_PP_ins.txt"
+RR_TAG = "Swing_PP_RR"
 META_MIN = 0.48
 TOP_N = 16
 MIN_AGE = 1
@@ -91,12 +106,61 @@ def write_watchlist(symbols: list[str], entry_day: datetime.date) -> None:
         print(f"[write] {path}  ({len(symbols)} names)", flush=True)
 
 
+def write_rr(
+    raises: list[dict],
+    keeps: list[dict],
+    next_d: datetime.date,
+    asof_d: datetime.date,
+) -> None:
+    FORECAST_DIR.mkdir(parents=True, exist_ok=True)
+    WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = next_d.strftime("%d_%b_%Y")
+    lines = [
+        f"Swing_PP RR  asof {asof_d.isoformat()}  next session {next_d.isoformat()}",
+        "Rule: after first +1R close, new TP from next open. SL to breakeven (entry).",
+        "No raise if that 1R bar already hit 2R or SL. Default stays 1:2.",
+        f"Cuts: P6>=0.85 -> 1:6 else P5>=0.85 -> 1:5 else P3>=0.80 -> 1:3.",
+        "",
+    ]
+    if raises:
+        lines.append("RAISE TP next session:")
+        for r in raises:
+            fy = to_fyers(str(r["Ticker"]))
+            lines.append(
+                f"  RAISE {fy:22s}  1:{int(r['chosen_rr'])}  "
+                f"P3={r['p3_1r']:.2f} P5={r['p5_1r']:.2f} P6={r['p6_1r']:.2f}  "
+                f"entry {r['Entry_Price']:.2f}  SL->BE {r['BE']:.2f}  "
+                f"TP {r['Target_Price']:.2f}"
+            )
+    else:
+        lines.append("No TP raises for next session.")
+    if keeps:
+        lines.append("")
+        lines.append("1R close today — keep 1:2 (model below cut):")
+        for r in keeps:
+            fy = to_fyers(str(r["Ticker"]))
+            lines.append(
+                f"  KEEP  {fy:22s}  1:2  "
+                f"P3={r['p3_1r']:.2f} P5={r['p5_1r']:.2f} P6={r['p6_1r']:.2f}"
+            )
+    body = "\n".join(lines) + "\n"
+    paths = [
+        FORECAST_DIR / f"{RR_TAG}_{stamp}.txt",
+        FORECAST_DIR / f"{RR_TAG}.txt",
+        WATCHLIST_DIR / f"{RR_TAG}.txt",
+    ]
+    for path in paths:
+        path.write_text(body, encoding="utf-8")
+        print(f"[rr] {path}", flush=True)
+
+
 def write_ins(
     entry_day: datetime.date,
     asof_d: datetime.date,
     gate: dict,
     why: str,
     scored_lines: list[str],
+    rr_raises: list[dict] | None = None,
 ) -> None:
     FORECAST_DIR.mkdir(parents=True, exist_ok=True)
     WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -119,7 +183,14 @@ def write_ins(
     if scored_lines:
         lines.append("scored:")
         lines.extend(f"  {s}" for s in scored_lines)
-    lines.append("Do not enter Swing_PP names this session.")
+    if rr_raises:
+        lines.append("RR raise next session (still manage open names):")
+        for r in rr_raises:
+            lines.append(
+                f"  RAISE {to_fyers(str(r['Ticker']))}  1:{int(r['chosen_rr'])}  "
+                f"TP {r['Target_Price']:.2f}"
+            )
+    lines.append("Do not enter NEW Swing_PP names this session.")
     body = "\n".join(lines) + "\n"
     for path in ins_paths(entry_day):
         path.write_text(body, encoding="utf-8")
@@ -250,16 +321,40 @@ def main() -> None:
             )
 
     symbols = [to_fyers(str(t)) for t in picked["Ticker"]] if len(picked) else []
+
+    book = load_open_book()
+    if len(picked):
+        book = add_pending_entries(book, picked, entry_d)
+    rr_raises: list[dict] = []
+    rr_keeps: list[dict] = []
+    models = None
+    if book:
+        try:
+            models = load_rr_models(asof)
+        except Exception as exc:
+            print(f"[rr] models failed: {exc}", flush=True)
+        try:
+            book, rr_raises, rr_keeps = scan_upgrades(book, asof, models)
+            book = [p for p in book if p.get("status") != "closed"]
+        except Exception as exc:
+            print(f"[rr] scan failed: {exc}", flush=True)
+        save_open_book(book)
+        print(
+            f"[rr] open-book {len(book)}  raise {len(rr_raises)}  keep-1:2 {len(rr_keeps)}",
+            flush=True,
+        )
+    write_rr(rr_raises, rr_keeps, entry_d, asof_d)
+
     if gate["skip"]:
         why = (
             f"paper-gate skip — last {gate.get('ready')} predicted paper results failed "
             f"{gate.get('fail_pct')}% (threshold {FAIL_MAX * 100:.0f}%)"
         )
         write_watchlist([], entry_d)
-        write_ins(entry_d, asof_d, gate, why, scored_lines)
+        write_ins(entry_d, asof_d, gate, why, scored_lines, rr_raises)
     elif not symbols:
         write_watchlist([], entry_d)
-        write_ins(entry_d, asof_d, gate, why, scored_lines)
+        write_ins(entry_d, asof_d, gate, why, scored_lines, rr_raises)
     else:
         write_watchlist(symbols, entry_d)
         delete_ins()
@@ -276,6 +371,8 @@ def main() -> None:
                 "n": len(symbols),
                 "symbols": symbols,
                 "scored": scored_lines,
+                "rr_raises": rr_raises,
+                "rr_keeps": rr_keeps,
             },
             indent=2,
             default=str,

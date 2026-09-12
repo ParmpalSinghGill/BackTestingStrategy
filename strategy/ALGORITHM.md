@@ -243,12 +243,13 @@ Downloads latest daily bars **once**, then scores all three books from that snap
 |------|---------|
 | `forecast_stocks/Swing_Live.txt` | Calendar Y/M/W min-low, Meta_P ≥ 0.38, top 32 |
 | `forecast_stocks/Swing_low.txt` | HTF swing-low, HGB meta ≥ 0.42, top 32 |
-| `forecast_stocks/Swing_PP.txt` | Same swing-low scan, ≥1m, Meta_P ≥ 0.48, top 16, paper-gate |
+| `forecast_stocks/Swing_PP.txt` | Same swing-low scan, ≥1m, Meta_P ≥ 0.48, top 16, paper-gate. New names **1:2**. |
+| `forecast_stocks/Swing_PP_RR.txt` | After a published name’s first **+1R close**: raise TP from **next** session if P6≥0.85 / P5≥0.85 / P3≥0.80. No raise if that bar already hit 2R or SL. |
 
 - Before 16:00: last complete bar = previous trading day (do not use today’s partial candle).
 - At/after 16:00: last complete bar = today (weekday) or last weekday.
-- Watchlist copies: `C:\Users\parmp\Downloads\Watchlist\Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt`.
-- If Swing_PP paper-gate skips the session, `Swing_PP_ins.txt` is written; if trading is allowed that file is deleted.
+- Watchlist copies: `C:\Users\parmp\Downloads\Watchlist\Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt`, `Swing_PP_RR.txt`.
+- If Swing_PP paper-gate skips the session, `Swing_PP_ins.txt` is written; if trading is allowed that file is deleted. RR raises still go to `Swing_PP_RR.txt`.
 - One-book scripts (`run_daily_swing_forecast.py`, `run_daily_swing_low_forecast.py`, `run_daily_swing_pp_forecast.py`) still exist for a manual rerun; pass `--skip-fetch` if data is already on disk.
 
 ---
@@ -263,6 +264,6 @@ Downloads latest daily bars **once**, then scores all three books from that snap
 | Vol size + books | `swing_strategy/run_ml_wave3.py` (`run_vol_managed`) |
 | Feature table | `Reports/LiquidityFix_IntactSupport/Features_v6.parquet` |
 | Scores | `Reports/LiquidityFix_IntactSupport/Scored_v6_meta.parquet` |
-| Daily forecast | `swing_strategy/run_daily_all_forecasts.py` → `Swing_Live.txt` + `Swing_low.txt` + `Swing_PP.txt` |
+| Daily forecast | `swing_strategy/run_daily_all_forecasts.py` → `Swing_Live.txt` + `Swing_low.txt` + `Swing_PP.txt` + `Swing_PP_RR.txt` |
 | Parked swing-low | `get_swing_low_supports` + `run_swing_low_liquidity_eval.py` (M36, not live) |
 | Results / caveats | [BEST_STRATEGY.md](BEST_STRATEGY.md), [STRATEGY_AUDIT.md](STRATEGY_AUDIT.md) |

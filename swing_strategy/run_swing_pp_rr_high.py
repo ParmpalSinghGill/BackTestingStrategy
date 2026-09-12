@@ -32,6 +32,7 @@ from swing_strategy.run_swing_pp_rr_classifier import (
     choose_ladder,
     oos_table,
     sim_lots,
+    upgrade_mask,
     walk_proba,
 )
 
@@ -51,17 +52,18 @@ def main() -> None:
             df[c] = pd.to_datetime(df[c])
     df["armed"] = pd.to_numeric(df.get("armed", 0), errors="coerce").fillna(0).astype(int)
     df["hit2"] = pd.to_numeric(df.get("hit2", 0), errors="coerce").fillna(0).astype(int)
+    df["can_upgrade"] = upgrade_mask(df).astype(int)
     for k in (2, 3, 4, 5, 6):
         df[f"win_{k}"] = pd.to_numeric(df.get(f"win_{k}", 0), errors="coerce").fillna(0).astype(int)
     print(
-        f"universe {len(df):,} armed {int(df.armed.sum()):,} "
+        f"universe {len(df):,} armed {int(df.armed.sum()):,} can_upgrade {int(df.can_upgrade.sum()):,} "
         f"win3 {int(df.win_3.sum()):,} win5 {int(df.win_5.sum()):,} win6 {int(df.win_6.sum()):,}",
         flush=True,
     )
 
     arm_cols = _feat_cols(df, PATH1)
-    armed_mask = df["armed"] == 1
-    print("[wf] at-1R P(win 1:3/5/6 | armed) ...", flush=True)
+    armed_mask = upgrade_mask(df)
+    print("[wf] at-1R P(win 1:3/5/6 | still in at 1R close) ...", flush=True)
     df["p3_1r"] = walk_proba(df, "win_3", arm_cols, armed_mask)
     df["p5_1r"] = walk_proba(df, "win_5", arm_cols, armed_mask)
     df["p6_1r"] = walk_proba(df, "win_6", arm_cols, armed_mask)
@@ -74,14 +76,14 @@ def main() -> None:
         "arm_win6": oos_table(df.loc[armed_mask, "win_6"].to_numpy(), df.loc[armed_mask, "p6_1r"].to_numpy(), th),
         "arm_win3": oos_table(df.loc[armed_mask, "win_3"].to_numpy(), df.loc[armed_mask, "p3_1r"].to_numpy(), th),
     }
-    print("OOS P(1:5 | armed):", flush=True)
+    print("OOS P(1:5 | can_upgrade):", flush=True)
     for row in acc["arm_win5"]:
         print(f"  t={row['t']:.2f} n={row['n_flag']:4d} prec={row['precision']:.1%} rec={row['recall']:.1%}", flush=True)
-    print("OOS P(1:6 | armed):", flush=True)
+    print("OOS P(1:6 | can_upgrade):", flush=True)
     for row in acc["arm_win6"]:
         print(f"  t={row['t']:.2f} n={row['n_flag']:4d} prec={row['precision']:.1%} rec={row['recall']:.1%}", flush=True)
 
-    armed = df["armed"].to_numpy() == 1
+    armed = armed_mask.to_numpy()
     bars = pd.to_numeric(df.get("bars_to_1R"), errors="coerce").fillna(99).to_numpy()
     close_r = pd.to_numeric(df.get("arm_close_R"), errors="coerce").fillna(0).to_numpy()
     meta = pd.to_numeric(df["Meta_P"], errors="coerce").fillna(0).to_numpy()

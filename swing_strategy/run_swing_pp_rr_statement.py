@@ -1,7 +1,8 @@
 """
 21-column account statement + plots for Swing_PP RR stack (M48).
 
-After +1R: P6>=0.85 -> 1:6, else P5>=0.85 -> 1:5, else P3>=0.80 -> 1:3, else 1:2.
+After the first +1R bar closes: P6>=0.85 -> 1:6, else P5>=0.85 -> 1:5, else P3>=0.80 -> 1:3, else 1:2.
+New TP starts next session. No upgrade if that 1R bar already tagged 2R or SL.
 Paper-gate still uses original 1:2 paper outcomes. Rs 50,000 start, 2% equity.
 Holding_Equity_Value is MTM (qty x daily close) per Guide/Account_Statement_guide.md.
 Not a frozen Rs 500 book. Does not write Swing_low / Swing_Live.
@@ -30,6 +31,7 @@ from swing_strategy.run_swing_pp_rr_classifier import (
     apply_rr,
     build_cache,
     choose_ladder,
+    upgrade_mask,
     walk_proba,
 )
 from swing_strategy.run_swing_pp_statement import CSV_COLS, _hyperlink, _plot_one, _write_excel
@@ -67,18 +69,19 @@ def _scored_fill() -> pd.DataFrame:
         if c in df.columns:
             df[c] = pd.to_datetime(df[c])
     df["armed"] = pd.to_numeric(df.get("armed", 0), errors="coerce").fillna(0).astype(int)
+    df["can_upgrade"] = upgrade_mask(df).astype(int)
     for k in (2, 3, 4, 5, 6):
         df[f"win_{k}"] = pd.to_numeric(df.get(f"win_{k}", 0), errors="coerce").fillna(0).astype(int)
     arm_cols = _feat_cols(df, PATH1)
-    armed_mask = df["armed"] == 1
-    print("[wf] scoring P(1:3/5/6 | +1R) ...", flush=True)
-    df["p3_1r"] = walk_proba(df, "win_3", arm_cols, armed_mask)
-    df["p5_1r"] = walk_proba(df, "win_5", arm_cols, armed_mask)
-    df["p6_1r"] = walk_proba(df, "win_6", arm_cols, armed_mask)
+    up_mask = upgrade_mask(df)
+    print("[wf] scoring P(1:3/5/6 | still in at 1R close) ...", flush=True)
+    df["p3_1r"] = walk_proba(df, "win_3", arm_cols, up_mask)
+    df["p5_1r"] = walk_proba(df, "win_5", arm_cols, up_mask)
+    df["p6_1r"] = walk_proba(df, "win_6", arm_cols, up_mask)
     df["p4_1r"] = 0.0
-    armed = df["armed"].to_numpy() == 1
+    can_up = up_mask.to_numpy()
     chosen = choose_ladder(
-        df["p3_1r"], df["p4_1r"], df["p5_1r"], T3, None, T5, armed, df["p6_1r"], T6,
+        df["p3_1r"], df["p4_1r"], df["p5_1r"], T3, None, T5, can_up, df["p6_1r"], T6,
     )
     fill = apply_rr(df, chosen)
     fill["chosen_rr"] = chosen.to_numpy()
@@ -371,8 +374,9 @@ def run(max_charts: int) -> None:
     period = f"{min_dt.strftime('%Y-%m-%d')} to {max_dt.strftime('%Y-%m-%d')}"
     rr_txt = ", ".join(f"{k}={v}" for k, v in sorted(rr_fills.items()))
     rule = (
-        "Swing_PP RR stack | after +1R: P6>=0.85->1:6 else P5>=0.85->1:5 "
-        "else P3>=0.80->1:3 else 1:2 | fair BE | 2% equity | paper-gate last 50 fail%>=74%"
+        "Swing_PP RR stack | after 1R close, TP next bar: P6>=0.85->1:6 else P5>=0.85->1:5 "
+        "else P3>=0.80->1:3 else 1:2 | no upgrade if 1R bar already hit 2R/SL | "
+        "fair BE | 2% equity | paper-gate last 50 fail%>=74%"
     )
     summary_rows = [
         ("Strategy Rule", rule, rule, rule),

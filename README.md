@@ -13,7 +13,7 @@ Quantitative swing trading for Indian equities (NSE/BSE). **Current verified bes
 * 📈 **Output Format & Tax Impact Guide**: [Guide/OutputFormatGuide.md](Guide/OutputFormatGuide.md) (Working PNG Hyperlinks, Visualizations & Before/After Tax CAGR Engine)
 * 🏆 **Current Best Strategy**: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md) (verified 5 Sep 2026 rules and net CAGRs)
 * ⚙️ **Algorithm (what it does)**: [strategy/ALGORITHM.md](strategy/ALGORITHM.md)
-* 📅 **Daily entries (4 PM)**: `python swing_strategy/run_daily_all_forecasts.py` — download once, then `Swing_Live.txt` (calendar Y/M/W lows), `Swing_low.txt`, and `Swing_PP.txt`
+* 📅 **Daily entries (4 PM)**: `python swing_strategy/run_daily_all_forecasts.py` — download once, then `Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt` (new names 1:2), and `Swing_PP_RR.txt` (raise TP after a +1R close)
 * 📓 **Tried experiments (do not retry)**: [strategy/TRIED_EXPERIMENTS.md](strategy/TRIED_EXPERIMENTS.md)
 
 > 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. All historical datasets (`data/`, `data_daily/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored via `.gitignore`.
