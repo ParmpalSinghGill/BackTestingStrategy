@@ -51,10 +51,10 @@ def be_fair(entry_idx, entry, sl, opens, highs, lows, n, rr=2.0):
             if h >= entry + risk:
                 armed = True
                 if h >= tp:
-                    return round(tp, 2), m, 2.0
+                    return round(tp, 2), m, float(rr)
             continue
         if h >= tp:
-            return round(tp, 2), m, 2.0
+            return round(tp, 2), m, float(rr)
         if l <= be:
             return round(be, 2), m, 0.0
     last = n - 1

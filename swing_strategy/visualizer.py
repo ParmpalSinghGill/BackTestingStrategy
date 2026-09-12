@@ -414,7 +414,8 @@ def generate_interactive_equity_html(df_daily_equity: pd.DataFrame, output_html:
                                     return [
                                         ' Total Portfolio Value (Cash + Holdings): ₹' + bal.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
                                         ' Free Cash Balance: ₹' + cash.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
-                                        ' Open Holdings Equity: ₹' + hold.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
+                                        ' Open Holdings MTM Equity Value: ₹' + hold.toLocaleString('en-IN', {{minimumFractionDigits: 2}}),
+                                        ' Active Positions Count: ' + active,
                                         ' Daily Net PnL: ₹' + (pnl >= 0 ? '+' : '') + pnl.toLocaleString('en-IN', {{minimumFractionDigits: 2}}) + ' (' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%)'
                                     ];
                                 }}

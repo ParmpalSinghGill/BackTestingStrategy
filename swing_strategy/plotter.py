@@ -4,9 +4,9 @@ Swing Strategy Candlestick Trade Chart Plotter
 Institutional-grade 200 DPI candlestick charts overlaying:
 - Support Liquidity level (#2563EB dashed)
 - Liquidity-source candle marker above that bar (#2563EB)
-- Dark Green horizontal line at Entry Price (#006400 solid)
+- Solid green horizontal line at Entry Price (#10B981)
 - Planned Entry horizontal line (#047857 dashed) if fill differs
-- Dark Red horizontal line at Exit Price (#8B0000 solid)
+- Solid red horizontal line at Exit Price (#EF4444)
 - Dotted Stop-Loss (#DC2626) & Target (#059669) lines
 - Wick-preserving green/red entry & exit marker arrows
 """
@@ -131,21 +131,17 @@ def plot_swing_trade_chart(trade_record: dict, output_dir: Path = None) -> str:
 
         planned_p = trade_record.get("Planned_Entry_Price", entry_p)
 
-        # EXACT USER COLOR RULE: DARK GREEN FOR ENTRY, DARK RED FOR EXIT
-        # Support Level Line (#2563EB)
         ax.axhline(sup_p, color="#2563EB", linestyle="--", linewidth=1.2, label=f"Support ({liq_type}): Rs {sup_p:.2f}", zorder=4)
 
         if abs(planned_p - entry_p) > 0.01:
             ax.axhline(planned_p, color="#047857", linestyle="--", linewidth=1.4, label=f"Planned Entry: Rs {planned_p:.2f}", zorder=4)
-            ax.axhline(entry_p, color="#006400", linestyle="-", linewidth=1.6, label=f"Actual Fill Entry (Dark Green): Rs {entry_p:.2f}", zorder=4)
+            ax.axhline(entry_p, color="#10B981", linestyle="-", linewidth=1.6, label=f"Actual Fill Entry: Rs {entry_p:.2f}", zorder=4)
         else:
-            ax.axhline(entry_p, color="#006400", linestyle="-", linewidth=1.6, label=f"Entry Price (Dark Green): Rs {entry_p:.2f}", zorder=4)
+            ax.axhline(entry_p, color="#10B981", linestyle="-", linewidth=1.6, label=f"Entry Price: Rs {entry_p:.2f}", zorder=4)
 
         ax.axhline(sl_p, color="#DC2626", linestyle=":", linewidth=1.4, label=f"Stop Loss: Rs {sl_p:.2f}", zorder=4)
         ax.axhline(tp_p, color="#059669", linestyle=":", linewidth=1.4, label=f"Target ({rr_choice} RR): Rs {tp_p:.2f}", zorder=4)
-
-        # Exit Price Line (Dark Red #8B0000)
-        ax.axhline(exit_p, color="#8B0000", linestyle="-", linewidth=1.6, label=f"Exit Price (Dark Red): Rs {exit_p:.2f}", zorder=4)
+        ax.axhline(exit_p, color="#EF4444", linestyle="-", linewidth=1.6, label=f"Exit Price: Rs {exit_p:.2f}", zorder=4)
 
         # Calculate Average Candle Size (Height) for offset calculation
         avg_candle_size = (df_sub["High"] - df_sub["Low"]).mean()

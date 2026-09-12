@@ -37,19 +37,19 @@ LOG = OUT / "pred_paper_gate.json"
 M46 = {"scale_hi": 1.3, "rank_hi": 1.2, "rank_lo": 0.6, "scale_lo": 0.40}
 
 
-def paper_win(rec: dict) -> bool | None:
+def paper_win(rec: dict, win_r: float = 1.5) -> bool | None:
     r = float(rec.get("Realized_R", -9))
-    if r >= 1.5:
+    if r >= win_r:
         return True
     if r < -0.25:
         return False
     return None  # BE / scratch — not a fail, not a win
 
 
-def exits_by_day(df: pd.DataFrame) -> dict:
+def exits_by_day(df: pd.DataFrame, win_r: float = 1.5) -> dict:
     out = defaultdict(list)
     for rec in df.to_dict("records"):
-        w = paper_win(rec)
+        w = paper_win(rec, win_r)
         if w is None:
             continue
         out[pd.Timestamp(rec["Exit_Date"]).normalize()].append(w)
@@ -66,8 +66,9 @@ def sim_pred_gate(ml: pd.DataFrame, cfg: dict) -> dict:
     rank_hi = float(cfg.get("rank_hi", 1.2))
     rank_lo = float(cfg.get("rank_lo", 0.6))
     scale_lo = float(cfg.get("scale_lo", 0.40))
+    win_r = float(cfg.get("win_r", 1.5))
 
-    paper = exits_by_day(ml)
+    paper = exits_by_day(ml, win_r)
     by_entry = defaultdict(list)
     for rec in ml.to_dict("records"):
         by_entry[pd.Timestamp(rec["Entry_Date"]).normalize()].append(rec)
