@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gold Replay Chart</title>
+  <link rel="stylesheet" href="/app.css?v=16">
+  <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="symbol-icon">AU</div>
+    <div>
+      <div class="symbol-name">COMEX Gold Futures</div>
+      <div class="symbol-code">GC=F · Local 1-minute + daily archive · replay</div>
+    </div>
+    <div class="ohlc">
+      <span><span>O</span> <b id="o">—</b></span>
+      <span><span>H</span> <b id="h">—</b></span>
+      <span><span>L</span> <b id="l">—</b></span>
+      <span><span>C</span> <b id="c">—</b></span>
+    </div>
+    <div class="source-note">1D/1W use Gold_Daily.csv from 2000 · 1m/intraday use month files · no download</div>
+  </header>
+
+  <nav class="toolbar">
+    <button class="tf active" data-tf="1m">1m</button>
+    <button class="tf" data-tf="5m">5m</button>
+    <button class="tf" data-tf="15m">15m</button>
+    <button class="tf" data-tf="1h">1h</button>
+    <button class="tf" data-tf="4h">4h</button>
+    <button class="tf" data-tf="1d" title="Full daily history from Gold_Daily.csv">1D</button>
+    <button class="tf" data-tf="1w" title="Weekly bars built from the daily archive">1W</button>
+    <div class="divider"></div>
+    <button class="tool active" data-tool="cursor" title="Pan and zoom">
+      <span class="tool-icon">↖</span>Cursor
+    </button>
+    <button class="tool" data-tool="trend" title="Drag from one point to the other, or click twice. Hold Shift to keep it straight (0°/45°/90°).">
+      <span class="tool-icon">╱</span>Trendline
+    </button>
+    <button class="tool" data-tool="horizontal" title="Click a price. Double-click or press T to add text.">
+      <span class="tool-icon">─</span>Horizontal
+    </button>
+    <button class="tool" data-tool="ray" title="Click a start price; extends right">
+      <span class="tool-icon">→</span>H-Ray
+    </button>
+    <button class="tool" data-tool="text" title="Click the chart, then type your note">
+      <span class="tool-icon">T</span>Text
+    </button>
+    <button class="tool" data-tool="measure" title="Drag across a range, or click twice">
+      <span class="tool-icon">↕</span>Measure
+    </button>
+    <button class="tool" data-tool="long" title="Click an entry, or drag to set the box width. Target and stop show points and percent.">
+      <span class="tool-icon">L</span>Long
+    </button>
+    <button class="tool" data-tool="short" title="Click an entry, or drag to set the box width. Target and stop show points and percent.">
+      <span class="tool-icon">S</span>Short
+    </button>
+    <button class="tool" data-tool="erase" title="Click a drawing to erase">
+      <span class="tool-icon">⌫</span>Erase
+    </button>
+    <button id="delete-one" class="danger" title="Delete the selected drawing (Del)" disabled>
+      <span class="tool-icon">🗑</span>Delete
+    </button>
+    <button id="clear" class="danger" title="Delete every drawing">Delete all</button>
+    <div class="divider"></div>
+    <button id="fit" title="Fit revealed candles">Fit</button>
+    <button id="follow" title="Keep the replay head in view">Follow</button>
+  </nav>
+
+  <nav class="replaybar">
+    <label class="field">Date
+      <input id="jump-date" type="date" title="1D/1W can jump back through Gold_Daily.csv (from 2000)">
+    </label>
+    <label class="field">Time IST
+      <input id="jump-time" type="time" step="60">
+    </label>
+    <button id="jump" title="Jump to this IST date. Dates before the 1m archive open the daily history.">Go</button>
+    <div class="divider"></div>
+    <button id="play" class="play" title="Space">Play</button>
+    <button id="next" title="Next candle of the current timeframe">Next</button>
+    <button id="next-hour" title="Jump one hour forward">Next hour</button>
+    <button id="next-day" title="Jump to the next session day">Next day</button>
+    <div class="divider"></div>
+    <label class="field">Sec / candle
+      <input id="speed" type="range" min="0.5" max="15" step="0.5" value="5">
+      <input id="speed-num" type="number" min="0.5" max="60" step="0.5" value="5">
+    </label>
+    <div id="replay-clock" class="replay-clock">REPLAY —</div>
+  </nav>
+
+  <main id="chart-shell">
+    <div id="watermark">GC=F · GOLD</div>
+    <div id="chart"></div>
+    <canvas id="drawing-layer" role="application" aria-label="Interactive drawing layer"></canvas>
+    <div id="selection-toolbar" hidden>
+      <button id="color-toggle" type="button" title="Color">
+        <span id="color-chip"></span>
+      </button>
+      <div id="color-popover" hidden>
+        <div id="color-grid" class="color-grid"></div>
+        <div class="color-opacity-row">
+          <span>Opacity</span>
+          <input id="color-opacity" type="range" min="20" max="100" step="1" value="100">
+          <span id="color-opacity-value">100%</span>
+        </div>
+        <label class="color-custom">
+          Custom
+          <input id="drawing-color" type="color" value="#f4c430">
+        </label>
+      </div>
+      <button id="edit-text" title="Add or edit text (double-click the drawing)">T</button>
+      <button id="delete-selected" title="Delete this drawing (Del)">🗑</button>
+    </div>
+    <input id="text-editor" type="text" placeholder="Type a note, then press Enter"
+           autocomplete="off" spellcheck="false" hidden>
+    <div id="loading">Loading local gold candles…</div>
+    <div id="error"></div>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="live-dot" class="dot paused"></i><span id="live-label">Paused</span></span>
+    <span id="bar-count">— candles</span>
+    <span id="range">—</span>
+    <span id="drawing-help">Pan/zoom mode</span>
+    <span id="status-right">Asia/Kolkata</span>
+  </footer>
+
+  <script src="app.js?v=26"></script>
+</body>
+</html>
