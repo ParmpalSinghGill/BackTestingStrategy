@@ -5,6 +5,8 @@ This script never writes to that folder.
 
 Usage:
     python src/data_fetchers/fetch_vantage_gold.py
+
+The 6-hour hidden job (run_fetch_gold_1m.vbs) runs Yahoo first, then this script.
 """
 
 from __future__ import annotations
@@ -321,16 +323,33 @@ def fetch_tv_1m_paged() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def fetch_dukascopy_1m(days: int = BACKFILL_DAYS) -> pd.DataFrame:
+def fetch_dukascopy_1m(days: int | None = None) -> pd.DataFrame:
     """Spot XAUUSD 1m from Dukascopy in small chunks (TV free 1m is only ~5 days)."""
     import dukascopy_python
     from dukascopy_python.instruments import INSTRUMENT_FX_METALS_XAU_USD
 
     end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
+    last = last_stored_timestamp()
+    if days is not None:
+        start = end - timedelta(days=days)
+        reason = f"forced {days} days"
+    elif last is None:
+        start = end - timedelta(days=BACKFILL_DAYS)
+        reason = f"first fill {BACKFILL_DAYS} days"
+    else:
+        start = last.tz_convert("UTC").to_pydatetime() - timedelta(minutes=2)
+        floor = end - timedelta(days=BACKFILL_DAYS)
+        if start < floor:
+            start = floor
+            reason = f"gap fill last {BACKFILL_DAYS} days"
+        else:
+            reason = f"resume from last stored bar {last}"
+    if start >= end:
+        logger.info("  Dukascopy 1m already current (%s)", last)
+        return pd.DataFrame()
     frames: list[pd.DataFrame] = []
     chunk_start = start
-    logger.info("  Dukascopy XAUUSD 1m backfill %s -> %s", start.date(), end.date())
+    logger.info("  Dukascopy XAUUSD 1m %s  %s -> %s", reason, start.date(), end.date())
     while chunk_start < end:
         chunk_end = min(chunk_start + timedelta(days=DUKA_CHUNK_DAYS), end)
         logger.info("    chunk %s -> %s", chunk_start, chunk_end)
@@ -421,11 +440,10 @@ def save_by_month(new_df: pd.DataFrame) -> list[tuple[str, int, int]]:
 def run_1m_update() -> int:
     logger.info("1m update  %s  folder=%s", TV_SYMBOL, OUTPUT_DIR)
     logger.info(
-        "TradingView free 1m is ~5 days; paging TV then backfilling %s days from Dukascopy XAUUSD",
-        BACKFILL_DAYS,
+        "TradingView free 1m is ~5 days; catch-up from Dukascopy XAUUSD plus latest Vantage TV bars"
     )
     frames: list[pd.DataFrame] = []
-    duka = fetch_dukascopy_1m(BACKFILL_DAYS)
+    duka = fetch_dukascopy_1m()
     if not duka.empty:
         frames.append(duka)
         logger.info("  Dukascopy 1m total %s bars", f"{len(duka):,}")

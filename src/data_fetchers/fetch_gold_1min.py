@@ -11,6 +11,9 @@ Usage:
     python src/data_fetchers/fetch_gold_1min.py
     python src/data_fetchers/fetch_gold_1min.py --install-task
     python src/data_fetchers/fetch_gold_1min.py --days 30
+
+The 6-hour hidden job (run_fetch_gold_1m.vbs) runs this script, then
+src/data_fetchers/fetch_vantage_gold.py, so both GOLD_DATA feeds stay current.
 """
 
 from __future__ import annotations
