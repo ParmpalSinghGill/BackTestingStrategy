@@ -7,6 +7,6 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Gold 1m/daily fetch: every 30 minutes, at sign-in, Startup keepalive.
+echo Gold 1m/daily fetch: every 6 hours, hidden, plus at sign-in.
 echo Swing forecasts: weekdays 16:00 and at sign-in.
 pause

@@ -8,6 +8,7 @@ __pycache__/
 # Data Directories & Market Raw Files
 data/
 data_daily/
+GOLD_DATA/
 scratch/
 EQUITY_L.csv
 Stocks.txt

@@ -4,23 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gold Replay Chart</title>
-  <link rel="stylesheet" href="/app.css?v=16">
+  <link rel="stylesheet" href="/app.css?v=30">
   <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <header class="topbar">
     <div class="symbol-icon">AU</div>
     <div>
-      <div class="symbol-name">COMEX Gold Futures</div>
-      <div class="symbol-code">GC=F · Local 1-minute + daily archive · replay</div>
+      <div class="symbol-name" id="symbol-name">COMEX Gold Futures</div>
+      <div class="symbol-code" id="symbol-code">GC=F · Local 1-minute + daily archive · replay</div>
     </div>
+    <label class="field feed-pick" title="Switch GOLD_DATA folder. Yahoo is COMEX futures; Vantage is TradingView XAUUSD.">Data
+      <select id="data-feed"></select>
+    </label>
     <div class="ohlc">
       <span><span>O</span> <b id="o">—</b></span>
       <span><span>H</span> <b id="h">—</b></span>
       <span><span>L</span> <b id="l">—</b></span>
       <span><span>C</span> <b id="c">—</b></span>
+      <span class="ohlc-chg"><b id="chg">—</b></span>
     </div>
-    <div class="source-note">1D/1W use Gold_Daily.csv from 2000 · 1m/intraday use month files · no download</div>
+    <div class="source-note" id="source-note">1D/1W use Gold_Daily.csv · 1m/intraday use month files · no download</div>
   </header>
 
   <nav class="toolbar">
@@ -65,7 +69,7 @@
     <button id="clear" class="danger" title="Delete every drawing">Delete all</button>
     <div class="divider"></div>
     <button id="fit" title="Fit revealed candles">Fit</button>
-    <button id="follow" title="Keep the replay head in view">Follow</button>
+    <button id="follow" data-follow class="active" title="When on, Play and Next keep the current candle centered in time and price. When off, drag to pan both axes and Shift+wheel to zoom price.">Follow on</button>
   </nav>
 
   <nav class="replaybar">
@@ -78,9 +82,26 @@
     <button id="jump" title="Jump to this IST date. Dates before the 1m archive open the daily history.">Go</button>
     <div class="divider"></div>
     <button id="play" class="play" title="Space">Play</button>
+    <button id="follow-replay" data-follow class="active" title="When on, Play and Next keep the current candle centered in time and price. When off, drag to pan both axes and Shift+wheel to zoom price.">Follow on</button>
     <button id="next" title="Next candle of the current timeframe">Next</button>
     <button id="next-hour" title="Jump one hour forward">Next hour</button>
     <button id="next-day" title="Jump to the next session day">Next day</button>
+    <div class="divider"></div>
+    <button id="events-toggle" title="Show EventFinder levels on the chart. Off keeps replay exactly as it is now. Switching data turns Events off.">Events <i id="events-spinner" class="events-spinner" hidden></i></button>
+    <button id="event-prev" title="Jump to the previous triggered event candle" disabled>Prev event</button>
+    <button id="event-next" title="Jump to the next triggered event candle" disabled>Next event</button>
+    <button id="event-labels-toggle" title="Show nearest intact support and resistance as horizontal rays from the source candle." disabled>Show labels</button>
+    <label class="field" id="event-label-count-wrap" hidden title="How many supports and resistances to draw. Default is 1 of each.">S/R
+      <input id="event-label-count" type="range" min="1" max="5" step="1" value="1">
+      <input id="event-label-count-num" type="number" min="1" max="5" step="1" value="1">
+    </label>
+    <span id="event-hud" class="event-hud">Events off</span>
+    <div class="divider"></div>
+    <button id="paper-arrows-toggle" class="active" title="Show or hide Buy/Sell/Exit arrows on the fill candles.">Arrows</button>
+    <label class="field" id="paper-arrow-size-wrap" title="Trade arrow size">Arrow
+      <input id="paper-arrow-size" type="range" min="8" max="32" step="1" value="16">
+      <input id="paper-arrow-size-num" type="number" min="8" max="32" step="1" value="16">
+    </label>
     <div class="divider"></div>
     <label class="field">Sec / candle
       <input id="speed" type="range" min="0.5" max="15" step="0.5" value="5">
@@ -89,10 +110,33 @@
     <div id="replay-clock" class="replay-clock">REPLAY —</div>
   </nav>
 
+  <div class="workspace">
   <main id="chart-shell">
     <div id="watermark">GC=F · GOLD</div>
     <div id="chart"></div>
     <canvas id="drawing-layer" role="application" aria-label="Interactive drawing layer"></canvas>
+    <div id="ohlc-legend" class="ohlc-legend">
+      <div class="ohlc-legend-title"><span id="legend-symbol">GC=F</span> · <span id="legend-tf">1m</span></div>
+      <div class="ohlc-legend-row">
+        <span>O <b id="lo">—</b></span>
+        <span>H <b id="lh">—</b></span>
+        <span>L <b id="ll">—</b></span>
+        <span>C <b id="lc">—</b></span>
+        <span id="legend-chg">—</span>
+      </div>
+    </div>
+    <div id="paper-pl-box" class="paper-pl-box" hidden>
+      <div class="paper-pl-head" id="paper-pl-head">NO POSITION</div>
+      <div class="paper-pl-row now">
+        <span>Now</span><b id="paper-pl-now">—</b>
+      </div>
+      <div class="paper-pl-row tp">
+        <span>TP <i id="paper-pl-tp-px">—</i></span><b id="paper-pl-tp">—</b>
+      </div>
+      <div class="paper-pl-row sl">
+        <span>SL <i id="paper-pl-sl-px">—</i></span><b id="paper-pl-sl">—</b>
+      </div>
+    </div>
     <div id="selection-toolbar" hidden>
       <button id="color-toggle" type="button" title="Color">
         <span id="color-chip"></span>
@@ -117,6 +161,100 @@
     <div id="loading">Loading local gold candles…</div>
     <div id="error"></div>
   </main>
+  <aside class="ticket" id="ticket" aria-label="Paper order ticket">
+    <div id="paper-pos" class="paper-pos is-flat">
+      <span class="paper-pos-mark" id="paper-pos-mark">○</span>
+      <div class="paper-pos-copy">
+        <div id="paper-pos-title">No position</div>
+        <div id="paper-pos-sub">Click Buy / Long or Sell / Short to enter</div>
+      </div>
+    </div>
+    <div class="ticket-pills">
+      <select id="paper-margin-mode" class="ticket-pill" title="Isolated margin. Cross is not simulated.">
+        <option value="isolated">Isolated</option>
+      </select>
+      <label class="ticket-pill ticket-lev" title="CoinDCX futures leverage">
+        <input id="paper-leverage" type="number" min="1" max="125" step="1" value="1">
+        <span>x</span>
+      </label>
+    </div>
+    <div class="ticket-sides">
+      <button type="button" id="ticket-long" class="ticket-long active">Long</button>
+      <button type="button" id="ticket-short" class="ticket-short">Short</button>
+    </div>
+    <div class="ticket-types">
+      <button type="button" class="active">Market</button>
+      <button type="button" disabled title="Replay fills at this candle close.">Limit</button>
+      <button type="button" disabled title="Replay fills at this candle close.">Stop Limit</button>
+    </div>
+    <div class="ticket-field">
+      <input id="paper-mark-price" type="text" readonly value="Market Price" title="Filled at the replay candle close, plus slippage.">
+    </div>
+    <div class="ticket-field">
+      <input id="paper-size-usdt" type="number" min="0" step="1" placeholder="Size" title="Margin in USDT">
+      <span class="ticket-unit">USDT</span>
+    </div>
+    <div class="ticket-size-meta">
+      <span id="paper-qty">~0.000 XAU</span>
+      <span id="paper-max">Max Buy —</span>
+    </div>
+    <input id="paper-size" type="range" min="0" max="100" step="1" value="100" title="% of available used as margin">
+    <div class="ticket-size-save">
+      <span>Size %</span>
+      <b id="paper-size-label">100%</b>
+    </div>
+    <div class="ticket-stats">
+      <div>
+        <span>Available</span>
+        <b id="paper-available">—</b>
+      </div>
+      <div>
+        <span>Actual capital</span>
+        <b id="paper-actual">—</b>
+      </div>
+      <div><span>Margin</span><b id="paper-margin">—</b></div>
+      <div><span>Est. Liq. Price</span><b id="paper-liq">—</b></div>
+    </div>
+    <button type="button" id="paper-tpsl-toggle" class="ticket-tpsl-btn">+ Add TP / SL</button>
+    <p id="paper-place-hint" class="ticket-hint">Each order has its own line. Click TP or SL, then drag. × closes that order. Buy / Sell stay available — lower Size % to add more.</p>
+    <div id="paper-tpsl" class="ticket-tpsl" hidden>
+      <label>TP
+        <span class="tpsl-input">
+          <input id="paper-tp" type="number" min="0" step="0.1" placeholder="price">
+          <button type="button" id="paper-tp-clear" title="Remove TP">×</button>
+        </span>
+      </label>
+      <label>pts <input id="paper-tp-pts" type="number" min="0" step="0.1" placeholder="+"></label>
+      <label>SL
+        <span class="tpsl-input">
+          <input id="paper-sl" type="number" min="0" step="0.1" placeholder="price">
+          <button type="button" id="paper-sl-clear" title="Remove SL">×</button>
+        </span>
+      </label>
+      <label>pts <input id="paper-sl-pts" type="number" min="0" step="0.1" placeholder="-"></label>
+    </div>
+    <button type="button" id="paper-submit" class="ticket-submit long">Buy / Long</button>
+    <div id="paper-books" class="paper-books" hidden></div>
+    <button type="button" id="paper-close" class="ticket-close" hidden>Close all</button>
+    <div id="paper-hud" class="paper-hud">Cash 10000.00 · no position</div>
+    <div class="ticket-book">
+      <div class="ticket-book-title">Book settings</div>
+      <label>Set capital
+        <input id="paper-capital" type="number" min="1" step="1" value="10000">
+      </label>
+      <p class="ticket-book-note">Starting money. Actual capital above moves with P&amp;L. Close trades before changing this.</p>
+      <label>Slippage %
+        <input id="paper-slip" type="number" min="0" max="1" step="0.01" value="0.02">
+      </label>
+      <p class="ticket-book-note">Worse fill than the candle close. Long buys a bit higher, short sells a bit lower.</p>
+      <label>Taker fee %
+        <input id="paper-taker" type="number" min="0" max="1" step="0.01" value="0.05">
+      </label>
+      <p class="ticket-book-note">Broker charge on every market fill — entry and exit. CoinDCX takes 0.05% of trade value, then 18% GST on that fee. This is not slippage.</p>
+      <button type="button" id="paper-book-save" class="ticket-set ticket-book-save">Save book settings</button>
+    </div>
+  </aside>
+  </div>
 
   <footer class="statusbar">
     <span><i id="live-dot" class="dot paused"></i><span id="live-label">Paused</span></span>
@@ -126,6 +264,6 @@
     <span id="status-right">Asia/Kolkata</span>
   </footer>
 
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>

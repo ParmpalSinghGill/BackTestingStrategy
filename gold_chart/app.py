@@ -1,7 +1,8 @@
-"""Local COMEX gold replay chart.
+"""Local gold replay chart.
 
-Reads GOLD_DATA month CSVs (1-minute bars) plus Gold_Daily.csv (full daily
-history) and serves them to the replay UI. This app never downloads market data.
+Reads 1-minute month CSVs plus Gold_Daily.csv from a GOLD_DATA feed folder.
+Yahoo COMEX lives in GOLD_DATA/Yahoo_Finance. Vantage/TradingView XAUUSD lives
+in GOLD_DATA/TradingView_Vantage. The UI can switch feeds. No market download.
 """
 
 from __future__ import annotations
@@ -9,17 +10,25 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pandas as pd
 
+try:
+    from .events import XAUUSDT_DAILY_NAME, serialize_events
+    from .paper import apply_paper_action, get_paper_state
+except ImportError:
+    from events import XAUUSDT_DAILY_NAME, serialize_events
+    from paper import apply_paper_action, get_paper_state
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-DATA_DIR = ROOT / "GOLD_DATA"
-DAILY_FILE = DATA_DIR / "Gold_Daily.csv"
+GOLD_ROOT = ROOT / "GOLD_DATA"
+FEED_STATE_FILE = GOLD_ROOT / "active_feed.json"
 DISPLAY_TZ = "Asia/Kolkata"
 COLUMNS = ["Datetime", "Open", "High", "Low", "Close", "Volume"]
 DAILY_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
@@ -38,8 +47,25 @@ MONTH_NAMES = (
     "December",
 )
 MONTH_INDEX = {name: i for i, name in enumerate(MONTH_NAMES, start=1)}
+KNOWN_FEEDS = {
+    "Yahoo_Finance": {
+        "id": "Yahoo_Finance",
+        "symbol": "GC=F",
+        "name": "COMEX Gold Futures",
+        "note": "Yahoo GC=F · 1m months + COMEX Gold_Daily.csv",
+    },
+    "TradingView_Vantage": {
+        "id": "TradingView_Vantage",
+        "symbol": "XAUUSD",
+        "name": "Vantage Gold Spot",
+        "note": "TradingView Vantage XAUUSD · 1m months + Gold_Daily.csv",
+    },
+}
 
 _cache: dict[str, object] = {"signature": None, "payload": None}
+_feed_lock = threading.Lock()
+DATA_DIR = GOLD_ROOT / "Yahoo_Finance"
+DAILY_FILE = DATA_DIR / "Gold_Daily.csv"
 
 
 def parse_month_file(path: Path) -> tuple[int, int] | None:
@@ -50,6 +76,97 @@ def parse_month_file(path: Path) -> tuple[int, int] | None:
         return int(parts[1]), MONTH_INDEX[parts[0]]
     except ValueError:
         return None
+
+
+def _feed_has_months(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    return any(parse_month_file(child) for child in path.glob("*.csv"))
+
+
+def _feed_meta(folder: Path) -> dict[str, object]:
+    known = KNOWN_FEEDS.get(folder.name)
+    if known:
+        info = dict(known)
+    else:
+        info = {
+            "id": folder.name,
+            "symbol": folder.name,
+            "name": folder.name.replace("_", " "),
+            "note": f"GOLD_DATA/{folder.name}",
+        }
+    source_file = folder / "SOURCE.txt"
+    if source_file.exists():
+        try:
+            first = source_file.read_text(encoding="utf-8").strip().splitlines()
+            if first:
+                info["sourceText"] = first[0]
+        except OSError:
+            pass
+    months = [child.name for child in folder.glob("*.csv") if parse_month_file(child)]
+    info["monthFiles"] = len(months)
+    info["hasDaily"] = (folder / "Gold_Daily.csv").exists()
+    return info
+
+
+def list_feeds() -> list[dict[str, object]]:
+    if not GOLD_ROOT.exists():
+        return []
+    feeds = []
+    for path in sorted(GOLD_ROOT.iterdir(), key=lambda item: item.name.lower()):
+        if _feed_has_months(path):
+            feeds.append(_feed_meta(path))
+    return feeds
+
+
+def _read_saved_feed_id() -> str:
+    try:
+        raw = json.loads(FEED_STATE_FILE.read_text(encoding="utf-8"))
+        return str(raw.get("id") or "")
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return ""
+
+
+def _write_saved_feed_id(feed_id: str) -> None:
+    GOLD_ROOT.mkdir(parents=True, exist_ok=True)
+    FEED_STATE_FILE.write_text(
+        json.dumps({"id": feed_id}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def apply_feed(feed_id: str) -> str:
+    global DATA_DIR, DAILY_FILE
+    feeds = {str(item["id"]): item for item in list_feeds()}
+    if feed_id not in feeds:
+        if "Yahoo_Finance" in feeds:
+            feed_id = "Yahoo_Finance"
+        elif feeds:
+            feed_id = next(iter(feeds))
+        else:
+            feed_id = "Yahoo_Finance"
+    DATA_DIR = GOLD_ROOT / feed_id
+    DAILY_FILE = DATA_DIR / "Gold_Daily.csv"
+    return feed_id
+
+
+def active_feed_id() -> str:
+    return apply_feed(_read_saved_feed_id())
+
+
+def set_active_feed(feed_id: str) -> dict[str, object]:
+    feeds = {str(item["id"]): item for item in list_feeds()}
+    if feed_id not in feeds:
+        raise ValueError(f"Unknown gold feed: {feed_id}")
+    with _feed_lock:
+        apply_feed(feed_id)
+        _write_saved_feed_id(feed_id)
+        _cache["signature"] = None
+        _cache["payload"] = None
+        return serialize_source()
+
+
+apply_feed(_read_saved_feed_id())
 
 
 def list_month_files() -> list[Path]:
@@ -229,10 +346,15 @@ def serialize_source() -> dict[str, object]:
     files = [path.name for path in list_month_files()]
     if DAILY_FILE.exists():
         files.append(DAILY_FILE.name)
+    feed_id = DATA_DIR.name
+    meta = next((item for item in list_feeds() if item["id"] == feed_id), None) or _feed_meta(DATA_DIR)
 
     payload = {
-        "symbol": "GC=F",
-        "name": "COMEX Gold Futures",
+        "symbol": meta.get("symbol") or feed_id,
+        "name": meta.get("name") or feed_id,
+        "note": meta.get("note") or f"GOLD_DATA/{feed_id}",
+        "feed": feed_id,
+        "feeds": list_feeds(),
         "timezone": DISPLAY_TZ,
         "interval": "1m",
         "count": len(frame),
@@ -251,12 +373,25 @@ def serialize_source() -> dict[str, object]:
     return payload
 
 
+def serialize_event_payload() -> dict[str, object]:
+    """EventFinder-style NEAR/TOUCH list from the selected GOLD_DATA feed only."""
+    signature = (*_data_signature(), DATA_DIR.name)
+    utc_path = DATA_DIR / XAUUSDT_DAILY_NAME
+    return serialize_events(_load_source(), load_daily_frame(), signature, utc_path)
+
+
 class ChartHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
     def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         parsed = self.path.split("?", 1)[0]
+        if parsed == "/api/feeds":
+            self._send_json({
+                "feed": active_feed_id(),
+                "feeds": list_feeds(),
+            })
+            return
         if parsed == "/api/source":
             try:
                 self._send_json(serialize_source())
@@ -269,9 +404,76 @@ class ChartHandler(SimpleHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, status)
             return
 
+        if parsed == "/api/events":
+            try:
+                self._send_json(serialize_event_payload())
+            except (FileNotFoundError, OSError, pd.errors.ParserError, ValueError, TypeError) as exc:
+                status = (
+                    HTTPStatus.NOT_FOUND
+                    if isinstance(exc, FileNotFoundError)
+                    else HTTPStatus.INTERNAL_SERVER_ERROR
+                )
+                self._send_json({"error": str(exc)}, status)
+            return
+
+        if parsed == "/api/paper":
+            try:
+                self._send_json(get_paper_state())
+            except (OSError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
         if parsed in {"", "/", "/index.html", "/index.htm"}:
             self.path = "/index.htm"
         super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = self.path.split("?", 1)[0]
+        if parsed == "/api/feed":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            raw = self.rfile.read(max(0, length)) if length else b"{}"
+            try:
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("JSON object required.")
+                feed_id = str(payload.get("id") or payload.get("feed") or "").strip()
+                if not feed_id:
+                    raise ValueError("Feed id is required.")
+                self._send_json(set_active_feed(feed_id))
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON."}, HTTPStatus.BAD_REQUEST)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except (FileNotFoundError, OSError, pd.errors.ParserError) as exc:
+                status = (
+                    HTTPStatus.NOT_FOUND
+                    if isinstance(exc, FileNotFoundError)
+                    else HTTPStatus.INTERNAL_SERVER_ERROR
+                )
+                self._send_json({"error": str(exc)}, status)
+            return
+        if parsed != "/api/paper":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(max(0, length)) if length else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8") or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required.")
+            self._send_json(apply_paper_action(payload))
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON."}, HTTPStatus.BAD_REQUEST)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        except OSError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _send_json(
         self, payload: dict[str, object], status: HTTPStatus = HTTPStatus.OK
@@ -297,11 +499,15 @@ def main() -> None:
     mimetypes.add_type("application/javascript", ".js")
     mimetypes.add_type("text/html", ".htm")
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
-
-    server = ThreadingHTTPServer((args.host, args.port), ChartHandler)
+    try:
+        server = ThreadingHTTPServer((args.host, args.port), ChartHandler)
+    except OSError:
+        print(f"Gold chart already running on {args.host}:{args.port}", flush=True)
+        return
     print(
         f"Gold replay chart: http://{args.host}:{args.port}\n"
-        f"Data source: {DATA_DIR}\n"
+        f"Data root: {GOLD_ROOT}\n"
+        f"Active feed: {DATA_DIR}\n"
         "No market data will be downloaded.",
         flush=True,
     )

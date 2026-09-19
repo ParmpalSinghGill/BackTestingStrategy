@@ -5,6 +5,10 @@ const DOWN_VOLUME = "#ef535080";
 const DEFAULT_DRAWING_COLOR = "#f4c430";
 const DRAWING_STORAGE_KEY = "gc-chart-drawings-shared";
 const REPLAY_STORAGE_KEY = "gc-chart-replay";
+const EVENTS_STORAGE_KEY = "gc-chart-events-on";
+const EVENT_LABELS_KEY = "gc-chart-event-labels";
+const PAPER_ARROWS_KEY = "gc-chart-paper-arrows";
+const FOLLOW_STORAGE_KEY = "gc-chart-follow-head";
 // TradingView-style drawing palette: greyscale, then hues from light to dark.
 const TV_COLOR_GRID = [
   ["#ffffff", "#e0e3eb", "#b2b5be", "#787b86", "#5d606b", "#434651", "#2a2e39", "#000000"],
@@ -43,6 +47,17 @@ const colorOpacity = document.getElementById("color-opacity");
 const colorOpacityValue = document.getElementById("color-opacity-value");
 const liveDot = document.getElementById("live-dot");
 const liveLabel = document.getElementById("live-label");
+
+let followHead = true;
+try {
+  const savedFollow = localStorage.getItem(FOLLOW_STORAGE_KEY);
+  if (savedFollow === "0") followHead = false;
+  if (savedFollow === "1") followHead = true;
+} catch {
+  followHead = true;
+}
+let lockedPriceRange = null;
+let pricePan = null;
 
 const chart = LightweightCharts.createChart(chartElement, {
   autoSize: true,
@@ -91,6 +106,31 @@ const candleSeries = chart.addCandlestickSeries({
   wickDownColor: "#ef5350",
   priceLineVisible: true,
   lastValueVisible: true,
+  autoscaleInfoProvider: (original) => {
+    if (!followHead && lockedPriceRange) {
+      return {
+        priceRange: {
+          minValue: lockedPriceRange.minValue,
+          maxValue: lockedPriceRange.maxValue,
+        },
+      };
+    }
+    const res = original();
+    if (!res?.priceRange) return res;
+    let min = res.priceRange.minValue;
+    let max = res.priceRange.maxValue;
+    paperPositions().forEach((pos) => {
+      [pos.entryFill, pos.tp, pos.sl].forEach((value) => {
+        const price = Number(value);
+        if (Number.isFinite(price) && price > 0) {
+          min = Math.min(min, price);
+          max = Math.max(max, price);
+        }
+      });
+    });
+    const pad = Math.max(0.5, (max - min) * 0.04);
+    return { ...res, priceRange: { minValue: min - pad, maxValue: max + pad } };
+  },
 });
 
 const volumeSeries = chart.addHistogramSeries({
@@ -115,7 +155,7 @@ let currentVolumes = [];
 let playing = false;
 let playTimer = null;
 let secondsPerCandle = 5;
-let followHead = true;
+let followProgrammatic = 0;
 let activeTool = "cursor";
 let pendingPoint = null;
 let pointerPreview = null;
@@ -131,6 +171,50 @@ let lastUsedColor = DEFAULT_DRAWING_COLOR;
 let lastUsedOpacity = 1;
 let overlayWidth = 0;
 let overlayHeight = 0;
+let chartEvents = [];
+let chartEventLabels = [];
+let eventsEnabled = false;
+let eventLabelsOn = false;
+let eventLabelCount = 1;
+try {
+  eventsEnabled = localStorage.getItem(EVENTS_STORAGE_KEY) === "1";
+} catch {
+  eventsEnabled = false;
+}
+try {
+  const savedLabels = JSON.parse(localStorage.getItem(EVENT_LABELS_KEY) || "null");
+  if (savedLabels && typeof savedLabels === "object") {
+    eventLabelsOn = savedLabels.on === true;
+    eventLabelCount = Math.max(1, Math.min(5, Number(savedLabels.count) || 1));
+  }
+} catch {
+  eventLabelsOn = false;
+  eventLabelCount = 1;
+}
+let eventsLoading = false;
+let paperArrowsOn = true;
+let paperArrowSize = 16;
+try {
+  const savedArrows = JSON.parse(localStorage.getItem(PAPER_ARROWS_KEY) || "null");
+  if (savedArrows && typeof savedArrows === "object") {
+    paperArrowsOn = savedArrows.on !== false;
+    const size = Number(savedArrows.size);
+    if (Number.isFinite(size)) paperArrowSize = Math.max(8, Math.min(32, size));
+  }
+} catch {
+  paperArrowsOn = true;
+}
+let eventGuideLine = null;
+const EVENT_TF_COLOR = {
+  "2-Year": "#ab47bc",
+  "1-Year": "#ff9800",
+  Monthly: "#d1d4dc",
+  Weekly: "#ef5350",
+  Daily: "#2962ff",
+  Hourly: "#26a69a",
+  PrevDay: "#f4c430",
+  Today: "#00bcd4",
+};
 
 const TWO_POINT_TOOLS = ["trend", "measure"];
 const CLICK_TOOLS = ["horizontal", "ray", "long", "short", "text"];
@@ -261,13 +345,19 @@ function applyTimeframe(timeframe) {
 
 function snapToReplayWindow() {
   if (!currentCandles.length) return;
-  followHead = false;
   const bars = usesDailyArchive() || sourceIndex < 0
     ? 220
     : currentTimeframe === "1m"
       ? 160
       : 200;
-  focusReplayWindow(bars);
+  followProgrammatic += 1;
+  try {
+    focusReplayWindow(bars);
+  } finally {
+    window.setTimeout(() => {
+      followProgrammatic = Math.max(0, followProgrammatic - 1);
+    }, 0);
+  }
 }
 
 function dataStartTime() {
@@ -485,6 +575,477 @@ function saveReplayCursor() {
   );
 }
 
+function eventColor(evt) {
+  return EVENT_TF_COLOR[evt.timeframe] || "#f4c430";
+}
+
+function navigationEvents() {
+  const byTime = new Map();
+  chartEvents.forEach((evt) => {
+    const prev = byTime.get(evt.time);
+    if (!prev || evt.status === "TOUCH") byTime.set(evt.time, evt);
+  });
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
+}
+
+function eventAtOrBeforeReplay() {
+  const list = navigationEvents();
+  let found = null;
+  for (const evt of list) {
+    if (evt.time <= replayTime) found = evt;
+    else break;
+  }
+  return found;
+}
+
+function saveEventLabelPrefs() {
+  try {
+    localStorage.setItem(EVENT_LABELS_KEY, JSON.stringify({
+      on: eventLabelsOn,
+      count: eventLabelCount,
+    }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncEventLabelControls() {
+  const toggle = document.getElementById("event-labels-toggle");
+  const wrap = document.getElementById("event-label-count-wrap");
+  const range = document.getElementById("event-label-count");
+  const num = document.getElementById("event-label-count-num");
+  if (toggle) {
+    toggle.disabled = !eventsEnabled || eventsLoading;
+    toggle.classList.toggle("active", eventsEnabled && eventLabelsOn && !eventsLoading);
+  }
+  if (wrap) wrap.hidden = !eventsEnabled || !eventLabelsOn;
+  if (range) range.value = String(eventLabelCount);
+  if (num && document.activeElement !== num) num.value = String(eventLabelCount);
+}
+
+function setEventLabelsEnabled(on) {
+  eventLabelsOn = Boolean(on);
+  saveEventLabelPrefs();
+  syncEventLabelControls();
+  drawOverlay();
+}
+
+function setEventLabelCount(value) {
+  eventLabelCount = Math.max(1, Math.min(5, Math.round(Number(value) || 1)));
+  saveEventLabelPrefs();
+  syncEventLabelControls();
+  drawOverlay();
+}
+
+function utcSessionDate(unix) {
+  const date = new Date(Number(unix) * 1000);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function replaySessionRange() {
+  const day = utcSessionDate(replayTime);
+  let high = -Infinity;
+  let low = Infinity;
+  currentCandles.forEach((bar) => {
+    if (utcSessionDate(bar.time) !== day) return;
+    high = Math.max(high, bar.high);
+    low = Math.min(low, bar.low);
+  });
+  return { high, low };
+}
+
+function hourlyLabelFloor(unix) {
+  const sessionStart = Math.floor(Number(unix) / 86400) * 86400;
+  return sessionStart - 86400;
+}
+
+function isEventLabelLive(lab, price, session, hourlyFrom) {
+  const source = Number(lab.sourceTime);
+  const ready = Number(lab.readyTime ?? lab.sourceTime);
+  const cancel = lab.cancelTime == null ? null : Number(lab.cancelTime);
+  if (!Number.isFinite(source) || source > replayTime) return false;
+  if (Number.isFinite(ready) && ready > replayTime) return false;
+  if (cancel != null && Number.isFinite(cancel) && cancel <= replayTime) return false;
+  if (lab.hourly && source < hourlyFrom) return false;
+  const level = Number(lab.price);
+  if (!Number.isFinite(level) || level <= 0) return false;
+  if (lab.type === "resistance") {
+    if (!(level > price)) return false;
+    if (Number.isFinite(session.high) && session.high >= level) return false;
+  } else if (lab.type === "support") {
+    if (!(level < price)) return false;
+    if (Number.isFinite(session.low) && session.low <= level) return false;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+function pickNearestEventLabels(labels, type, count) {
+  const side = labels.filter((lab) => lab.type === type);
+  side.sort((a, b) => (type === "resistance" ? a.price - b.price : b.price - a.price));
+  const seen = new Set();
+  const out = [];
+  side.forEach((lab) => {
+    const key = Number(lab.price).toFixed(2);
+    if (seen.has(key) || out.length >= count) return;
+    seen.add(key);
+    out.push(lab);
+  });
+  return out;
+}
+
+function activeEventLabels() {
+  if (!eventsEnabled || !eventLabelsOn || !chartEventLabels.length || !currentCandles.length) {
+    return [];
+  }
+  const last = currentCandles[currentCandles.length - 1];
+  const price = Number(last?.close);
+  if (!Number.isFinite(price) || price <= 0) return [];
+  const session = replaySessionRange();
+  const hourlyFrom = hourlyLabelFloor(replayTime);
+  const live = chartEventLabels.filter((lab) => isEventLabelLive(lab, price, session, hourlyFrom));
+  return [
+    ...pickNearestEventLabels(live, "support", eventLabelCount),
+    ...pickNearestEventLabels(live, "resistance", eventLabelCount),
+  ];
+}
+
+function drawEventLabelRays() {
+  const labels = activeEventLabels();
+  if (!labels.length) return;
+  ctx.save();
+  ctx.font = "11px Inter, sans-serif";
+  ctx.lineWidth = 1;
+  labels.forEach((lab) => {
+    const y = candleSeries.priceToCoordinate(lab.price);
+    if (y == null) return;
+    const start = screenPoint({ time: lab.sourceTime, price: lab.price });
+    const x = start ? start.x : 0;
+    if (start && start.x > overlayWidth) return;
+    const color = eventColor(lab);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.setLineDash(lab.type === "support" ? [6, 4] : []);
+    ctx.beginPath();
+    ctx.moveTo(Math.max(0, x), y);
+    ctx.lineTo(overlayWidth, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (start && start.x >= 0 && start.x <= overlayWidth) {
+      ctx.beginPath();
+      ctx.arc(start.x, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tag = lab.name || `${lab.timeframe} ${lab.type === "support" ? "S" : "R"}`;
+    const textWidth = ctx.measureText(tag).width;
+    const textX = Math.max(6, overlayWidth - textWidth - 8);
+    const textY = lab.type === "support" ? y + 12 : y - 5;
+    ctx.fillStyle = "#0b0e11cc";
+    ctx.fillRect(textX - 3, textY - 10, textWidth + 6, 14);
+    ctx.fillStyle = color;
+    ctx.fillText(tag, textX, textY);
+  });
+  ctx.restore();
+}
+
+function syncEventScanUi() {
+  const toggle = document.getElementById("events-toggle");
+  const spinner = document.getElementById("events-spinner");
+  const scanning = eventsEnabled && eventsLoading;
+  if (toggle) {
+    toggle.classList.toggle("active", eventsEnabled);
+    toggle.classList.toggle("scanning", scanning);
+    toggle.title = scanning
+      ? "Scanning this feed in the background. Leave Events on until the spinner stops."
+      : "Show EventFinder levels on the chart. Switching data turns Events off.";
+  }
+  if (spinner) spinner.hidden = !scanning;
+}
+
+function updateEventHud(evt = null) {
+  const hud = document.getElementById("event-hud");
+  const prevBtn = document.getElementById("event-prev");
+  const nextBtn = document.getElementById("event-next");
+  syncEventScanUi();
+  syncEventLabelControls();
+  if (!eventsEnabled) {
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    hud.textContent = "Events off";
+    return;
+  }
+  if (eventsLoading) {
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    hud.textContent = "Scanning this feed… spinner means wait, do not toggle";
+    return;
+  }
+  const list = navigationEvents();
+  let previous = null;
+  let next = null;
+  for (const item of list) {
+    if (item.time < replayTime) previous = item;
+    if (item.time > replayTime && !next) next = item;
+  }
+  prevBtn.disabled = !previous;
+  nextBtn.disabled = !next;
+  const shown = evt || eventAtOrBeforeReplay();
+  if (!list.length) {
+    hud.textContent = "No events in local gold data";
+    return;
+  }
+  if (!shown) {
+    hud.textContent = `${list.length} events · next ${next ? next.level : "—"}`;
+    return;
+  }
+  hud.textContent =
+    `${shown.status} ${shown.level} @ ${Number(shown.price).toFixed(2)}` +
+    ` · ${list.length} events`;
+}
+
+function clearEventGuide() {
+  if (!eventGuideLine) return;
+  try {
+    candleSeries.removePriceLine(eventGuideLine);
+  } catch {
+    // already gone
+  }
+  eventGuideLine = null;
+}
+
+function showEventGuide(evt) {
+  if (!eventsEnabled || !evt) {
+    clearEventGuide();
+    return;
+  }
+  const options = {
+    price: evt.price,
+    color: eventColor(evt),
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dashed,
+    axisLabelVisible: true,
+    title: `${evt.status} ${evt.timeframe}`,
+  };
+  if (eventGuideLine) {
+    eventGuideLine.applyOptions(options);
+    return;
+  }
+  eventGuideLine = candleSeries.createPriceLine(options);
+}
+
+function snapEventMarkerTime(unix) {
+  if (!currentCandles.length) return null;
+  const idx = lastIndexAtOrBefore(unix, currentCandles);
+  if (idx < 0) return null;
+  return currentCandles[idx].time;
+}
+
+function paperFillMarkers() {
+  return [];
+}
+
+function savePaperArrowPrefs() {
+  try {
+    localStorage.setItem(PAPER_ARROWS_KEY, JSON.stringify({
+      on: paperArrowsOn,
+      size: paperArrowSize,
+    }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function setPaperArrowsEnabled(on) {
+  paperArrowsOn = Boolean(on);
+  const toggle = document.getElementById("paper-arrows-toggle");
+  const wrap = document.getElementById("paper-arrow-size-wrap");
+  if (toggle) toggle.classList.toggle("active", paperArrowsOn);
+  if (wrap) wrap.hidden = !paperArrowsOn;
+  savePaperArrowPrefs();
+  drawOverlay();
+  syncEventMarkers();
+}
+
+function setPaperArrowSize(value) {
+  paperArrowSize = Math.max(8, Math.min(32, Number(value) || 16));
+  const range = document.getElementById("paper-arrow-size");
+  const num = document.getElementById("paper-arrow-size-num");
+  if (range) range.value = String(paperArrowSize);
+  if (num && document.activeElement !== num) num.value = String(paperArrowSize);
+  savePaperArrowPrefs();
+  drawOverlay();
+}
+
+function drawTradeArrow(x, y, up, color, size, label) {
+  if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  ctx.beginPath();
+  if (up) {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - size * 0.42, y + size);
+    ctx.lineTo(x + size * 0.42, y + size);
+  } else {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - size * 0.42, y - size);
+    ctx.lineTo(x + size * 0.42, y - size);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  if (label) {
+    ctx.font = `700 ${Math.max(9, Math.round(size * 0.55))}px Inter, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = up ? "top" : "bottom";
+    ctx.fillStyle = color;
+    ctx.fillText(label, x, up ? y + size + 1 : y - size - 1);
+    ctx.textAlign = "left";
+  }
+}
+
+function drawPaperArrows() {
+  if (!paperArrowsOn || !currentCandles.length) return;
+  const size = paperArrowSize;
+  const marks = paperState?.markers || [];
+  ctx.save();
+  marks.forEach((mark) => {
+    const snapped = snapEventMarkerTime(mark.time);
+    if (snapped == null || snapped > replayTime) return;
+    const idx = lastIndexAtOrBefore(snapped, currentCandles);
+    if (idx < 0 || currentCandles[idx].time !== snapped) return;
+    const bar = currentCandles[idx];
+    const x = coordinateForTime(bar.time);
+    if (x == null) return;
+    const text = mark.text || (mark.buy ? "B" : "S");
+    const up = !!mark.buy || text === "B";
+    const color = text === "X" ? "#f0b90b" : (up ? "#00c076" : "#f6465d");
+    const price = Number(mark.price);
+    const yPrice = Number.isFinite(price) && price > 0
+      ? price
+      : (up ? bar.low : bar.high);
+    let y = candleSeries.priceToCoordinate(yPrice);
+    if (y == null) return;
+    y = up ? y + 2 : y - 2;
+    drawTradeArrow(x, y, up, color, size, text);
+  });
+  ctx.restore();
+}
+
+function syncEventMarkers() {
+  const markers = [];
+  if (eventsEnabled && chartEvents.length && currentCandles.length) {
+    const byTime = new Map();
+    chartEvents.forEach((evt) => {
+      if (evt.time > replayTime) return;
+      const time = snapEventMarkerTime(evt.time);
+      if (time == null) return;
+      const prev = byTime.get(time);
+      if (!prev || evt.status === "TOUCH") byTime.set(time, evt);
+    });
+    byTime.forEach((evt, time) => {
+      const support = evt.type === "support";
+      markers.push({
+        time,
+        position: support ? "belowBar" : "aboveBar",
+        color: evt.status === "TOUCH" ? eventColor(evt) : "#2962ff",
+        shape: support ? "arrowUp" : "arrowDown",
+        text: evt.status === "TOUCH" ? "T" : "N",
+      });
+    });
+    showEventGuide(eventAtOrBeforeReplay());
+  } else if (!eventsEnabled) {
+    clearEventGuide();
+  }
+  paperFillMarkers().forEach((marker) => markers.push(marker));
+  markers.sort((a, b) => a.time - b.time || String(a.text).localeCompare(String(b.text)));
+  try {
+    candleSeries.setMarkers(markers);
+  } catch {
+    // series not ready
+  }
+  updateEventHud();
+}
+
+async function loadChartEvents() {
+  if (eventsLoading) return;
+  eventsLoading = true;
+  updateEventHud();
+  try {
+    const response = await fetch("/api/events");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not load events");
+    if (!eventsEnabled) {
+      chartEvents = [];
+      chartEventLabels = [];
+      return;
+    }
+    chartEvents = Array.isArray(payload.events) ? payload.events : [];
+    chartEventLabels = Array.isArray(payload.labels) ? payload.labels : [];
+  } catch (error) {
+    chartEvents = [];
+    chartEventLabels = [];
+    if (eventsEnabled) {
+      document.getElementById("event-hud").textContent = error.message;
+    }
+  } finally {
+    eventsLoading = false;
+    syncEventMarkers();
+    drawOverlay();
+  }
+}
+
+function setEventsEnabled(on) {
+  eventsEnabled = Boolean(on);
+  try {
+    localStorage.setItem(EVENTS_STORAGE_KEY, eventsEnabled ? "1" : "0");
+  } catch {
+    // ignore
+  }
+  if (!eventsEnabled) {
+    clearEventGuide();
+    syncEventMarkers();
+    updateEventHud();
+    drawOverlay();
+    return;
+  }
+  if (!chartEvents.length && !chartEventLabels.length) loadChartEvents();
+  else {
+    syncEventMarkers();
+    drawOverlay();
+  }
+}
+
+function jumpToEvent(evt) {
+  if (!evt) return;
+  pauseReplay();
+  setReplayTime(evt.time, { preserveRange: !followHead });
+  if (followHead) {
+    snapToReplayWindow();
+  } else {
+    revealReplayHead();
+  }
+  showEventGuide(evt);
+  updateEventHud(evt);
+}
+
+function jumpPrevEvent() {
+  if (!eventsEnabled) return;
+  const list = navigationEvents();
+  let previous = null;
+  for (const item of list) {
+    if (item.time < replayTime) previous = item;
+  }
+  jumpToEvent(previous);
+}
+
+function jumpNextEvent() {
+  if (!eventsEnabled) return;
+  const next = navigationEvents().find((item) => item.time > replayTime);
+  jumpToEvent(next);
+}
+
 function drawingColor(drawing) {
   return drawing?.color || DEFAULT_DRAWING_COLOR;
 }
@@ -502,6 +1063,15 @@ function normalizeHex(color) {
 function drawingOpacity(drawing) {
   const value = Number(drawing?.opacity);
   return Number.isFinite(value) ? Math.min(1, Math.max(0.2, value)) : 1;
+}
+
+function colorWithAlpha(color, opacity) {
+  const hex = normalizeHex(color);
+  const red = parseInt(hex.slice(1, 3), 16);
+  const green = parseInt(hex.slice(3, 5), 16);
+  const blue = parseInt(hex.slice(5, 7), 16);
+  const alpha = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function closeColorPopover() {
@@ -585,13 +1155,70 @@ function setLiveState(state, label) {
   liveLabel.textContent = label;
 }
 
+function previousBarClose(bar) {
+  if (!bar || !currentCandles.length) return null;
+  const idx = lastIndexAtOrBefore(bar.time, currentCandles);
+  if (idx <= 0) return null;
+  if (currentCandles[idx].time === bar.time) {
+    return Number(currentCandles[idx - 1].close);
+  }
+  return Number(currentCandles[idx].close);
+}
+
+function formatSigned(value, digits) {
+  const n = Number(value);
+  const text = Math.abs(n).toFixed(digits);
+  if (n > 0) return `+${text}`;
+  if (n < 0) return `−${text}`;
+  return text;
+}
+
 function updateOhlc(bar) {
   if (!bar) return;
-  const color = bar.close >= bar.open ? "#26a69a" : "#ef5350";
+  const candleColor = bar.close >= bar.open ? "#26a69a" : "#ef5350";
   for (const [id, key] of [["o", "open"], ["h", "high"], ["l", "low"], ["c", "close"]]) {
-    const element = document.getElementById(id);
-    element.textContent = Number(bar[key]).toFixed(2);
-    element.style.color = color;
+    const text = Number(bar[key]).toFixed(2);
+    const header = document.getElementById(id);
+    const legend = document.getElementById(`l${id}`);
+    if (header) {
+      header.textContent = text;
+      header.style.color = candleColor;
+    }
+    if (legend) {
+      legend.textContent = text;
+      legend.style.color = candleColor;
+    }
+  }
+
+  const tfEl = document.getElementById("legend-tf");
+  if (tfEl) tfEl.textContent = currentTimeframe.toUpperCase();
+
+  const prevClose = previousBarClose(bar);
+  const changeEl = document.getElementById("chg");
+  const legendChg = document.getElementById("legend-chg");
+  if (prevClose == null || !Number.isFinite(prevClose) || prevClose === 0) {
+    if (changeEl) {
+      changeEl.textContent = "—";
+      changeEl.style.color = "";
+    }
+    if (legendChg) {
+      legendChg.textContent = "—";
+      legendChg.style.color = "";
+    }
+    return;
+  }
+
+  const delta = Number(bar.close) - prevClose;
+  const pct = (delta / prevClose) * 100;
+  const chgColor = delta > 0 ? "#26a69a" : delta < 0 ? "#ef5350" : "#787b86";
+  const chgText = `${formatSigned(delta, 2)} (${formatSigned(pct, 2)}%)`;
+  if (changeEl) {
+    changeEl.textContent = chgText;
+    changeEl.style.color = chgColor;
+  }
+  if (legendChg) {
+    legendChg.textContent = chgText;
+    legendChg.style.color = chgColor;
   }
 }
 
@@ -625,23 +1252,156 @@ function updateStatus() {
   }
 }
 
-function keepHeadInView() {
-  if (!followHead || !currentCandles.length) return;
-  const range = chart.timeScale().getVisibleLogicalRange();
-  const last = currentCandles.length - 1;
-  if (!range) {
-    chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, last - 180),
-      to: last + 5,
-    });
+function visiblePriceRange() {
+  let height = overlayHeight;
+  if (!height) {
+    try {
+      height = chart.paneSize?.()?.height || 0;
+    } catch {
+      height = 0;
+    }
+  }
+  if (!height) return null;
+  const top = candleSeries.coordinateToPrice(0);
+  const bottom = candleSeries.coordinateToPrice(height);
+  if (top == null || bottom == null) return null;
+  const minValue = Math.min(top, bottom);
+  const maxValue = Math.max(top, bottom);
+  if (!(maxValue > minValue)) return null;
+  return { minValue, maxValue };
+}
+
+function lockCurrentPriceRange() {
+  const range = visiblePriceRange();
+  if (range) lockedPriceRange = range;
+  return lockedPriceRange;
+}
+
+function refreshLockedPriceScale() {
+  if (followHead) {
+    lockedPriceRange = null;
+    try {
+      chart.priceScale("right").applyOptions({ autoScale: true });
+    } catch {
+      /* scale not ready */
+    }
     return;
   }
-  if (last > range.to - 4 || last < range.from) {
-    const width = Math.max(40, range.to - range.from);
+  if (!lockedPriceRange) lockCurrentPriceRange();
+  if (!lockedPriceRange) return;
+  try {
+    chart.priceScale("right").applyOptions({ autoScale: true });
+    chart.priceScale("right").applyOptions({ autoScale: false });
+  } catch {
+    /* scale not ready */
+  }
+}
+
+function applyPricePan(event) {
+  if (!pricePan || event.pointerId !== pricePan.pointerId) return;
+  const height = pricePan.height || 1;
+  const span = pricePan.max - pricePan.min;
+  const shift = ((event.clientY - pricePan.startY) / height) * span;
+  lockedPriceRange = {
+    minValue: pricePan.min + shift,
+    maxValue: pricePan.max + shift,
+  };
+  refreshLockedPriceScale();
+  drawOverlay();
+}
+
+function zoomLockedPrice(event) {
+  const range = lockedPriceRange || visiblePriceRange();
+  if (!range) return;
+  const height = overlayHeight || 1;
+  const rect = canvas.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (event.clientY - rect.top) / height));
+  const span = range.maxValue - range.minValue;
+  const factor = event.deltaY > 0 ? 1.08 : 1 / 1.08;
+  const nextSpan = Math.max(0.2, span * factor);
+  const priceAtCursor = range.maxValue - frac * span;
+  lockedPriceRange = {
+    minValue: priceAtCursor - nextSpan * (1 - frac),
+    maxValue: priceAtCursor + nextSpan * frac,
+  };
+  refreshLockedPriceScale();
+  drawOverlay();
+}
+
+function isOnPriceAxis(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return (
+    clientX > rect.left + overlayWidth &&
+    clientY >= rect.top &&
+    clientY <= rect.top + overlayHeight
+  );
+}
+
+function setFollowHead(on, { snap = true } = {}) {
+  followHead = Boolean(on);
+  document.querySelectorAll("[data-follow]").forEach((button) => {
+    button.classList.toggle("active", followHead);
+    button.textContent = followHead ? "Follow on" : "Follow off";
+  });
+  try {
+    localStorage.setItem(FOLLOW_STORAGE_KEY, followHead ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  if (followHead) {
+    pricePan = null;
+    lockedPriceRange = null;
+    refreshLockedPriceScale();
+    if (snap) revealReplayHead();
+  } else {
+    lockCurrentPriceRange();
+    refreshLockedPriceScale();
+  }
+  drawOverlay();
+}
+
+function revealReplayHead() {
+  if (!currentCandles.length) return;
+  followProgrammatic += 1;
+  try {
+    const last = currentCandles.length - 1;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    const width = range ? Math.max(40, range.to - range.from) : 180;
     chart.timeScale().setVisibleLogicalRange({
       from: last - width + 5,
       to: last + 5,
     });
+  } finally {
+    window.setTimeout(() => {
+      followProgrammatic = Math.max(0, followProgrammatic - 1);
+    }, 0);
+  }
+}
+
+function keepHeadInView() {
+  if (!followHead || !currentCandles.length) return;
+  const range = chart.timeScale().getVisibleLogicalRange();
+  const last = currentCandles.length - 1;
+  followProgrammatic += 1;
+  try {
+    if (!range) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(0, last - 180),
+        to: last + 5,
+      });
+      return;
+    }
+    if (last > range.to - 4 || last < range.from) {
+      const width = Math.max(40, range.to - range.from);
+      chart.timeScale().setVisibleLogicalRange({
+        from: last - width + 5,
+        to: last + 5,
+      });
+    }
+  } finally {
+    window.setTimeout(() => {
+      followProgrammatic = Math.max(0, followProgrammatic - 1);
+    }, 0);
   }
 }
 
@@ -650,7 +1410,11 @@ function finishRender() {
   updateStatus();
   syncDateInputs();
   keepHeadInView();
+  refreshLockedPriceScale();
   drawOverlay();
+  syncEventMarkers();
+  updatePaperHud();
+  checkPaperStops();
 }
 
 function renderChart({ preserveRange = false } = {}) {
@@ -672,7 +1436,12 @@ function renderChart({ preserveRange = false } = {}) {
   } else {
     keepHeadInView();
   }
+  refreshLockedPriceScale();
   drawOverlay();
+  scheduleOverlayDraw(4);
+  syncEventMarkers();
+  updatePaperHud();
+  checkPaperStops();
 }
 
 // Stepping further than this is cheaper as one setData() than as N updates.
@@ -689,7 +1458,6 @@ function setReplayTime(time, { preserveRange = false } = {}) {
 
   const step = sourceIndex - previousIndex;
   const canAppend =
-    !preserveRange &&
     !usesDailyArchive() &&
     previousIndex >= 0 &&
     sourceIndex >= 0 &&
@@ -726,18 +1494,19 @@ function jumpToTime(time) {
 }
 
 function nextArchiveBar() {
+  const opts = { preserveRange: !followHead };
   if (!dailyCandles.length) return;
   const idx = lastIndexAtOrBefore(replayTime, dailyCandles);
   if (idx < 0) {
-    setReplayTime(dailyCandles[0].time);
+    setReplayTime(dailyCandles[0].time, opts);
     return;
   }
   if (currentTimeframe === "1d") {
     if (idx + 1 >= dailyCandles.length) {
-      setReplayTime(dailyCandles[dailyCandles.length - 1].time);
+      setReplayTime(dailyCandles[dailyCandles.length - 1].time, opts);
       return;
     }
-    setReplayTime(dailyCandles[idx + 1].time);
+    setReplayTime(dailyCandles[idx + 1].time, opts);
     return;
   }
 
@@ -750,7 +1519,7 @@ function nextArchiveBar() {
     index += 1;
   }
   if (index >= dailyCandles.length) {
-    setReplayTime(dailyCandles[dailyCandles.length - 1].time);
+    setReplayTime(dailyCandles[dailyCandles.length - 1].time, opts);
     return;
   }
   const nextWeek = bucketStart(dailyCandles[index].time, "1w");
@@ -761,10 +1530,11 @@ function nextArchiveBar() {
   ) {
     end += 1;
   }
-  setReplayTime(dailyCandles[end].time);
+  setReplayTime(dailyCandles[end].time, opts);
 }
 
 function nextCandle() {
+  const opts = { preserveRange: !followHead };
   if (usesDailyArchive()) {
     if (isReplayEnded()) {
       pauseReplay("End of data");
@@ -780,11 +1550,11 @@ function nextCandle() {
     return;
   }
   if (sourceIndex < 0) {
-    setReplayTime(sourceCandles[0].time);
+    setReplayTime(sourceCandles[0].time, opts);
     return;
   }
   if (currentTimeframe === "1m") {
-    setReplayIndex(sourceIndex + 1);
+    setReplayIndex(sourceIndex + 1, opts);
     return;
   }
   const currentBucket = bucketStart(sourceCandles[sourceIndex].time, currentTimeframe);
@@ -796,7 +1566,7 @@ function nextCandle() {
     index += 1;
   }
   if (index >= sourceCandles.length) {
-    setReplayIndex(sourceCandles.length - 1);
+    setReplayIndex(sourceCandles.length - 1, opts);
     return;
   }
   const nextBucket = bucketStart(sourceCandles[index].time, currentTimeframe);
@@ -807,16 +1577,17 @@ function nextCandle() {
   ) {
     end += 1;
   }
-  setReplayIndex(end);
+  setReplayIndex(end, opts);
 }
 
 function jumpBySeconds(seconds) {
+  const opts = { preserveRange: !followHead };
   if (usesDailyArchive()) {
     if (seconds >= 86400) {
       const days = Math.max(1, Math.round(seconds / 86400));
       const idx = lastIndexAtOrBefore(replayTime, dailyCandles);
       const next = Math.min(dailyCandles.length - 1, Math.max(0, idx) + days);
-      setReplayTime(dailyCandles[next].time);
+      setReplayTime(dailyCandles[next].time, opts);
       return;
     }
     nextArchiveBar();
@@ -824,7 +1595,7 @@ function jumpBySeconds(seconds) {
   }
   if (!sourceCandles.length) return;
   if (sourceIndex < 0) {
-    setReplayTime(sourceCandles[0].time);
+    setReplayTime(sourceCandles[0].time, opts);
     return;
   }
   const target = sourceCandles[sourceIndex].time + seconds;
@@ -833,30 +1604,31 @@ function jumpBySeconds(seconds) {
     index = firstIndexAtOrAfter(target);
   }
   if (index >= sourceCandles.length) {
-    setReplayIndex(sourceCandles.length - 1);
+    setReplayIndex(sourceCandles.length - 1, opts);
     return;
   }
-  setReplayIndex(index);
+  setReplayIndex(index, opts);
 }
 
 function jumpNextDay() {
+  const opts = { preserveRange: !followHead };
   if (usesDailyArchive()) {
     nextArchiveBar();
     return;
   }
   if (!sourceCandles.length) return;
   if (sourceIndex < 0) {
-    setReplayTime(sourceCandles[0].time);
+    setReplayTime(sourceCandles[0].time, opts);
     return;
   }
   const current = istParts(sourceCandles[sourceIndex].time).date;
   for (let i = sourceIndex + 1; i < sourceCandles.length; i += 1) {
     if (istParts(sourceCandles[i].time).date !== current) {
-      setReplayIndex(i);
+      setReplayIndex(i, opts);
       return;
     }
   }
-  setReplayIndex(sourceCandles.length - 1);
+  setReplayIndex(sourceCandles.length - 1, opts);
 }
 
 function pauseReplay(label = "Paused") {
@@ -893,6 +1665,916 @@ function restartPlayTimer() {
   startReplay();
 }
 
+let paperState = null;
+let paperLines = [];
+let paperSettingsTimer = 0;
+let paperStopsTimer = 0;
+let paperChecking = false;
+let paperSide = "long";
+let paperPlaceKind = null;
+let paperStopDrag = null;
+let paperTagHits = [];
+let paperPlacePress = null;
+
+function paperPositions() {
+  const raw = paperState?.open;
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw.filter(Boolean) : [raw];
+}
+
+function paperById(id) {
+  return paperPositions().find((pos) => Number(pos.id) === Number(id)) || null;
+}
+
+function setPaperPlaceHint(text, active) {
+  const hint = paperField("paper-place-hint");
+  if (!hint) return;
+  hint.classList.toggle("active", !!active);
+  if (text) hint.textContent = text;
+}
+
+function idlePaperPlaceHint() {
+  paperPlaceKind = null;
+  setPaperPlaceHint("Each order has its own line. Click TP or SL, then drag. × closes that order.", false);
+}
+
+function replayFillPrice() {
+  const bar = currentCandles[currentCandles.length - 1];
+  return bar ? Number(bar.close) : null;
+}
+
+function paperField(id) {
+  return document.getElementById(id);
+}
+
+function isPaperShort(open = null) {
+  if (open?.side) return String(open.side).toUpperCase() === "SHORT";
+  return paperSide === "short";
+}
+
+function fmtPnl(value) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function paperExitFill(open, signal, kind) {
+  const slip = Number(open.slippagePct) / 100;
+  if (kind === "limit") return Number(signal);
+  if (isPaperShort(open)) return Number(signal) * (1 + slip);
+  return Number(signal) * (1 - slip);
+}
+
+function paperNetPnl(open, signal, kind) {
+  if (!open || signal == null || !Number.isFinite(Number(signal))) return null;
+  const qty = Number(open.quantity);
+  const fill = paperExitFill(open, signal, kind);
+  const entry = Number(open.entryFill);
+  const gross = isPaperShort(open) ? (entry - fill) * qty : (fill - entry) * qty;
+  const taker = Number(open.takerFeePct) / 100;
+  const gst = Number(open.gstPct) / 100;
+  const exitCharge = Math.abs(qty * fill) * taker * (1 + gst);
+  return gross - exitCharge - Number(open.entryCharges || 0);
+}
+
+function paperInputPrice(id) {
+  const el = paperField(id);
+  const value = Number(el?.value);
+  return el && el.value !== "" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readPaperStops() {
+  return {
+    tp: paperField("paper-tp")?.value ?? "",
+    sl: paperField("paper-sl")?.value ?? "",
+    tpPts: paperField("paper-tp-pts")?.value ?? "",
+    slPts: paperField("paper-sl-pts")?.value ?? "",
+    side: isPaperShort() ? "SHORT" : "LONG",
+  };
+}
+
+function paperRefPrice() {
+  return replayFillPrice();
+}
+
+function syncPtsFromPrices() {
+  const ref = paperRefPrice();
+  const tpPts = paperField("paper-tp-pts");
+  const slPts = paperField("paper-sl-pts");
+  if (ref == null || !tpPts || !slPts) return;
+  const tp = paperInputPrice("paper-tp");
+  const sl = paperInputPrice("paper-sl");
+  const short = isPaperShort();
+  if (document.activeElement !== tpPts) {
+    tpPts.value = tp != null ? Math.max(0, short ? ref - tp : tp - ref).toFixed(2) : "";
+  }
+  if (document.activeElement !== slPts) {
+    slPts.value = sl != null ? Math.max(0, short ? sl - ref : ref - sl).toFixed(2) : "";
+  }
+}
+
+function applyPtsToPrice(kind) {
+  const ref = paperRefPrice();
+  if (ref == null) return;
+  const short = isPaperShort();
+  if (kind === "tp") {
+    const pts = Number(paperField("paper-tp-pts").value);
+    if (Number.isFinite(pts) && pts > 0) {
+      paperField("paper-tp").value = (short ? ref - pts : ref + pts).toFixed(2);
+    }
+  } else {
+    const pts = Number(paperField("paper-sl-pts").value);
+    if (Number.isFinite(pts) && pts > 0) {
+      paperField("paper-sl").value = (short ? ref + pts : ref - pts).toFixed(2);
+    }
+  }
+}
+
+function setPaperSide(side, { force = false } = {}) {
+  paperSide = side === "short" ? "short" : "long";
+  paperField("ticket-long")?.classList.toggle("active", paperSide === "long");
+  paperField("ticket-short")?.classList.toggle("active", paperSide === "short");
+  const ref = paperRefPrice();
+  const tp = paperInputPrice("paper-tp");
+  const sl = paperInputPrice("paper-sl");
+  if (ref != null) {
+    if (paperSide === "short") {
+      if (tp != null && tp >= ref && paperField("paper-tp")) paperField("paper-tp").value = "";
+      if (sl != null && sl <= ref && paperField("paper-sl")) paperField("paper-sl").value = "";
+    } else {
+      if (tp != null && tp <= ref && paperField("paper-tp")) paperField("paper-tp").value = "";
+      if (sl != null && sl >= ref && paperField("paper-sl")) paperField("paper-sl").value = "";
+    }
+  }
+  updateTicketButtons();
+  updateTicketPreview();
+  syncPtsFromPrices();
+}
+
+function togglePaperTpsl(forceOpen) {
+  const box = paperField("paper-tpsl");
+  if (!box) return;
+  const open = forceOpen === true || (forceOpen !== false && box.hidden);
+  box.hidden = !open;
+  const toggle = paperField("paper-tpsl-toggle");
+  if (toggle) toggle.textContent = open ? "TP / SL" : "+ Add TP / SL";
+  if (open && !paperPlaceKind) idlePaperPlaceHint();
+}
+
+function paperEquity() {
+  const cash = Number(paperState?.cash ?? 0);
+  const now = replayFillPrice();
+  const locked = paperPositions().reduce((sum, pos) => sum + Number(pos.moneyUsed || 0), 0);
+  let pnl = 0;
+  let mtm = 0;
+  if (now != null) {
+    paperPositions().forEach((pos) => {
+      const net = paperNetPnl(pos, now, "market") || 0;
+      pnl += net;
+      mtm += net + Number(pos.entryCharges || 0);
+    });
+  }
+  return { cash, locked, pnl, actual: cash + locked + mtm };
+}
+
+function fillPaperInputs(state, { forceCapital = false, syncSettings = false } = {}) {
+  const capital = paperField("paper-capital");
+  if (capital && (forceCapital || document.activeElement !== capital)) {
+    capital.value = String(state.setCapital ?? 10000);
+  }
+  if (syncSettings) {
+    const map = [
+      ["paper-size", "sizePct"],
+      ["paper-leverage", "leverage"],
+      ["paper-slip", "slippagePct"],
+      ["paper-taker", "takerFeePct"],
+    ];
+    map.forEach(([id, key]) => {
+      const el = paperField(id);
+      if (el && document.activeElement !== el && state[key] != null) {
+        el.value = String(state[key]);
+      }
+    });
+  }
+  const sizeLabel = paperField("paper-size-label");
+  if (sizeLabel) sizeLabel.textContent = `${Number(paperField("paper-size")?.value || 0)}%`;
+  const sizeUsdt = paperField("paper-size-usdt");
+  if (sizeUsdt && document.activeElement !== sizeUsdt) {
+    const cash = Number(state.cash);
+    const pct = Number(paperField("paper-size")?.value || state.sizePct || 0);
+    sizeUsdt.value = Number.isFinite(cash * pct / 100) ? (cash * pct / 100).toFixed(2) : "";
+  }
+}
+
+function upsertPaperLine(line, options) {
+  if (!options) {
+    if (line) {
+      try { candleSeries.removePriceLine(line); } catch { /* gone */ }
+    }
+    return null;
+  }
+  if (line) {
+    line.applyOptions(options);
+    return line;
+  }
+  return candleSeries.createPriceLine(options);
+}
+
+function setPnlText(id, value) {
+  const el = paperField(id);
+  if (!el) return;
+  el.textContent = fmtPnl(value);
+  el.className = value > 0 ? "up" : value < 0 ? "down" : "";
+}
+
+function currentPaperLevels(pos) {
+  if (!pos) return { tp: null, sl: null };
+  const tp = pos.tp != null && pos.tp !== "" ? Number(pos.tp) : null;
+  const sl = pos.sl != null && pos.sl !== "" ? Number(pos.sl) : null;
+  return {
+    tp: Number.isFinite(tp) && tp > 0 ? tp : null,
+    sl: Number.isFinite(sl) && sl > 0 ? sl : null,
+  };
+}
+
+function syncPaperLine() {
+  const positions = paperPositions();
+  const dotted = LightweightCharts.LineStyle.Dotted;
+  while (paperLines.length > positions.length) {
+    const extra = paperLines.pop();
+    upsertPaperLine(extra.entry, null);
+    upsertPaperLine(extra.tp, null);
+    upsertPaperLine(extra.sl, null);
+  }
+  positions.forEach((pos, index) => {
+    if (!paperLines[index]) paperLines[index] = { id: pos.id, entry: null, tp: null, sl: null };
+    const short = isPaperShort(pos);
+    const { tp, sl } = currentPaperLevels(pos);
+    paperLines[index].id = pos.id;
+    paperLines[index].entry = upsertPaperLine(paperLines[index].entry, {
+      price: Number(pos.entryFill),
+      color: short ? "#f6465d" : "#00c076",
+      lineWidth: 1,
+      lineStyle: dotted,
+      axisLabelVisible: true,
+      title: "",
+    });
+    paperLines[index].tp = upsertPaperLine(paperLines[index].tp, tp != null ? {
+      price: tp,
+      color: "#00c076",
+      lineWidth: 1,
+      lineStyle: dotted,
+      axisLabelVisible: true,
+      title: "",
+    } : null);
+    paperLines[index].sl = upsertPaperLine(paperLines[index].sl, sl != null ? {
+      price: sl,
+      color: "#f0b90b",
+      lineWidth: 1,
+      lineStyle: dotted,
+      axisLabelVisible: true,
+      title: "",
+    } : null);
+  });
+  const box = paperField("paper-pl-box");
+  if (box) box.hidden = true;
+  refreshLockedPriceScale();
+  scheduleOverlayDraw(2);
+  syncEventMarkers();
+}
+
+function updateTicketPreview() {
+  const cash = Number(paperState?.cash ?? paperField("paper-capital")?.value ?? 0);
+  const pct = Number(paperField("paper-size")?.value || 0);
+  const lev = Math.max(1, Number(paperField("paper-leverage")?.value || 1));
+  const slip = Number(paperField("paper-slip")?.value || 0) / 100;
+  const taker = Number(paperField("paper-taker")?.value || 0) / 100;
+  const gst = Number(paperState?.gstPct ?? 18) / 100;
+  const px = replayFillPrice();
+  const short = isPaperShort();
+  const mark = paperField("paper-mark-price");
+  if (mark && document.activeElement !== mark) {
+    mark.value = px != null ? `${px.toFixed(2)} · Market` : "Market Price";
+  }
+  const available = paperField("paper-available");
+  if (available) available.textContent = Number.isFinite(cash) ? cash.toFixed(2) : "—";
+  const actualEl = paperField("paper-actual");
+  if (actualEl) {
+    const { actual, pnl } = paperEquity();
+    actualEl.textContent = Number.isFinite(actual) ? actual.toFixed(2) : "—";
+    actualEl.className = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
+  }
+  const sizeLabel = paperField("paper-size-label");
+  if (sizeLabel) sizeLabel.textContent = `${pct}%`;
+  const maxEl = paperField("paper-max");
+  if (maxEl) {
+    const maxNotional = Math.max(0, cash * lev);
+    maxEl.textContent = `${short ? "Max Sell" : "Max Buy"} ${maxNotional.toFixed(2)}`;
+  }
+  const sizeUsdt = paperField("paper-size-usdt");
+  const margin = cash * (pct / 100);
+  if (sizeUsdt && document.activeElement !== sizeUsdt) {
+    sizeUsdt.value = pct > 0 ? margin.toFixed(2) : "";
+  }
+  const marginEl = paperField("paper-margin");
+  const qtyEl = paperField("paper-qty");
+  const liqEl = paperField("paper-liq");
+  if (marginEl) marginEl.textContent = pct > 0 ? margin.toFixed(2) : "—";
+  if (px == null || pct <= 0) {
+    if (qtyEl) qtyEl.textContent = "~0.000 XAU";
+    if (liqEl) liqEl.textContent = "—";
+    return;
+  }
+  const fill = short ? px * (1 - slip) : px * (1 + slip);
+  const chargeRate = taker * (1 + gst);
+  const money = margin / (1 + lev * chargeRate);
+  const qty = Math.floor((money * lev) / fill / 0.001) * 0.001;
+  if (qtyEl) qtyEl.textContent = `~${Math.max(0, qty).toFixed(3)} XAU`;
+  if (liqEl) {
+    const liq = short ? fill * (1 + 1 / lev) : fill * (1 - 1 / lev);
+    liqEl.textContent = lev > 1 ? liq.toFixed(2) : "—";
+  }
+}
+
+function updateTicketButtons() {
+  const positions = paperPositions();
+  const submit = paperField("paper-submit");
+  const closeBtn = paperField("paper-close");
+  const wantShort = paperSide === "short";
+  paperField("ticket-long")?.classList.toggle("active", !wantShort);
+  paperField("ticket-short")?.classList.toggle("active", wantShort);
+  paperField("ticket-long")?.removeAttribute("disabled");
+  paperField("ticket-short")?.removeAttribute("disabled");
+  if (submit) {
+    submit.className = `ticket-submit ${wantShort ? "short" : "long"}`;
+    submit.textContent = wantShort ? "Sell / Short" : "Buy / Long";
+    submit.hidden = false;
+    submit.disabled = Number(paperField("paper-size")?.value || 0) <= 0;
+  }
+  if (closeBtn) {
+    closeBtn.hidden = !positions.length;
+    closeBtn.disabled = !positions.length;
+    closeBtn.textContent = positions.length > 1 ? `Close all (${positions.length})` : "Close all";
+  }
+}
+
+function renderPaperBooks() {
+  const box = paperField("paper-books");
+  if (!box) return;
+  const rows = paperPositions();
+  const now = replayFillPrice();
+  if (!rows.length) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = rows.map((pos) => {
+    const short = isPaperShort(pos);
+    const pnl = now != null ? paperNetPnl(pos, now, "market") : 0;
+    const cls = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
+    return `<div class="paper-book-row ${short ? "short" : "long"}">
+      <span>${short ? "SHORT" : "LONG"}</span>
+      <span>${Number(pos.quantity).toFixed(3)} @ ${Number(pos.entryFill).toFixed(2)}</span>
+      <b class="${cls}">${fmtPnl(pnl)}</b>
+    </div>`;
+  }).join("");
+}
+
+function updatePositionStatus() {
+  const wrap = paperField("paper-pos");
+  const mark = paperField("paper-pos-mark");
+  const title = paperField("paper-pos-title");
+  const sub = paperField("paper-pos-sub");
+  if (!wrap || !mark || !title || !sub) return;
+  const rows = paperPositions();
+  const last = paperState?.lastClosed;
+  wrap.classList.remove("is-long", "is-short", "is-flat");
+  renderPaperBooks();
+  if (rows.length) {
+    const longs = rows.filter((pos) => !isPaperShort(pos)).length;
+    const shorts = rows.length - longs;
+    const now = replayFillPrice();
+    const pnl = now == null
+      ? 0
+      : rows.reduce((sum, pos) => sum + (paperNetPnl(pos, now, "market") || 0), 0);
+    wrap.classList.add(shorts && !longs ? "is-short" : "is-long");
+    mark.textContent = rows.length > 1 ? String(rows.length) : (shorts ? "▼" : "▲");
+    title.textContent = rows.length > 1 ? `${rows.length} OPEN` : (shorts ? "IN SHORT" : "IN LONG");
+    sub.textContent = `${longs} long · ${shorts} short · ${fmtPnl(pnl)}`;
+    return;
+  }
+  wrap.classList.add("is-flat");
+  if (last) {
+    mark.textContent = "X";
+    title.textContent = `EXITED ${last.side}`;
+    sub.textContent =
+      `${Number(last.quantity).toFixed(3)} XAU @ ${Number(last.exitFill).toFixed(2)} · ${fmtPnl(Number(last.pnl))} · ${last.reason || "CLOSE"}`;
+    return;
+  }
+  mark.textContent = "○";
+  title.textContent = "No position";
+  sub.textContent = "Click Buy / Long or Sell / Short to enter";
+}
+
+function updatePaperHud() {
+  const hud = paperField("paper-hud");
+  if (!hud) return;
+  const state = paperState;
+  if (!state) {
+    hud.textContent = "Paper book loading…";
+    hud.className = "paper-hud";
+    return;
+  }
+  updateTicketButtons();
+  updatePositionStatus();
+  const { cash, actual, pnl } = paperEquity();
+  updateTicketPreview();
+  const rows = paperPositions();
+  const cls = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
+  hud.className = `paper-hud ${cls}`.trim();
+  const txns = state.transactionCount || 0;
+  const closed = state.closedTrades || 0;
+  const setCap = Number(state.setCapital || 0);
+  if (!rows.length) {
+    hud.textContent =
+      `Actual ${actual.toFixed(2)} · Set ${setCap.toFixed(2)} · ${closed} trades · ${txns} txns`;
+  } else {
+    hud.textContent =
+      `Actual ${actual.toFixed(2)} · ${fmtPnl(pnl)} · ${rows.length} open · avail ${cash.toFixed(2)}`;
+  }
+  hud.title = `${state.tradesFile || ""} | ${state.transactionsFile || ""}`;
+  idlePaperPlaceHint();
+  syncPaperLine();
+}
+
+function applyPaperState(state, { forceCapital = false, syncSettings = false } = {}) {
+  paperState = state;
+  fillPaperInputs(state, { forceCapital, syncSettings });
+  updatePaperHud();
+}
+
+async function loadPaperState() {
+  try {
+    const response = await fetch("/api/paper");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not load paper book");
+    applyPaperState(payload, { forceCapital: true, syncSettings: true });
+  } catch (error) {
+    const hud = paperField("paper-hud");
+    if (hud) hud.textContent = error.message;
+  }
+}
+
+async function paperPost(body) {
+  const response = await fetch("/api/paper", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Paper request failed");
+  applyPaperState(payload, {
+    forceCapital: body.action === "set_capital",
+    syncSettings: body.action === "settings" || body.action === "set_capital",
+  });
+  return payload;
+}
+
+function paperMark() {
+  const price = replayFillPrice();
+  if (price == null || !replayTime) {
+    throw new Error("No candle to trade. Jump to a date first.");
+  }
+  return { price, time: replayTime, timeframe: currentTimeframe };
+}
+
+async function paperSubmit() {
+  try {
+    await paperPost({
+      action: paperSide === "short" ? "short" : "long",
+      ...paperMark(),
+      ...readPaperStops(),
+      sizePct: Number(paperField("paper-size")?.value || paperState?.sizePct || 100),
+      leverage: Number(paperField("paper-leverage")?.value || paperState?.leverage || 1),
+    });
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
+async function paperClose(id) {
+  try {
+    const body = { action: id == null ? "close_all" : "close", ...paperMark() };
+    if (id != null) body.id = id;
+    await paperPost(body);
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
+async function paperReverse(id) {
+  try {
+    await paperPost({ action: "reverse", id, ...paperMark() });
+  } catch (error) {
+    window.alert(error.message);
+  }
+}
+
+async function paperSaveBook() {
+  const btn = paperField("paper-book-save");
+  const capital = Number(paperField("paper-capital").value);
+  try {
+    const body = {
+      action: "settings",
+      slippagePct: Number(paperField("paper-slip").value),
+      takerFeePct: Number(paperField("paper-taker").value),
+      leverage: Number(paperField("paper-leverage").value),
+    };
+    const sizePct = Number(paperField("paper-size").value);
+    if (Number.isFinite(sizePct) && sizePct > 0) body.sizePct = sizePct;
+    await paperPost(body);
+    const saved = Number(paperState?.setCapital);
+    if (Number.isFinite(capital) && capital > 0 && Math.abs(capital - saved) > 0.009) {
+      await paperPost({ action: "set_capital", capital });
+    }
+    if (btn) {
+      btn.textContent = "Saved";
+      setTimeout(() => { if (btn) btn.textContent = "Save book settings"; }, 1200);
+    }
+  } catch (error) {
+    window.alert(error.message);
+    if (btn) btn.textContent = "Save book settings";
+  }
+}
+
+function schedulePaperStops(id) {
+  if (id == null) return;
+  if (paperStopsTimer) clearTimeout(paperStopsTimer);
+  paperStopsTimer = setTimeout(() => savePositionStops(id), 250);
+}
+
+function suggestedPaperLevels(pos) {
+  const ref = Number(pos?.entryFill ?? paperRefPrice());
+  if (!Number.isFinite(ref) || ref <= 0) return { tp: null, sl: null };
+  const pad = Math.max(8, ref * 0.004);
+  const now = replayFillPrice();
+  const short = isPaperShort(pos);
+  const tp = short ? ref - pad : ref + pad;
+  let sl = short ? ref + pad : ref - pad;
+  if (now != null && Number.isFinite(now)) {
+    if (!short && now > ref) sl = (ref + now) / 2;
+    if (short && now < ref) sl = (ref + now) / 2;
+  }
+  return { tp, sl };
+}
+
+function clearPaperLevel(kind, id) {
+  if (id != null) {
+    const pos = paperById(id);
+    if (!pos) return;
+    pos[kind] = null;
+    syncPaperLine();
+    savePositionStops(id);
+    return;
+  }
+  const el = paperField(kind === "tp" ? "paper-tp" : "paper-sl");
+  const pts = paperField(kind === "tp" ? "paper-tp-pts" : "paper-sl-pts");
+  if (el) el.value = "";
+  if (pts) pts.value = "";
+  syncPtsFromPrices();
+}
+
+function setPaperLevel(kind, price, id, persist = true) {
+  if (id == null || !Number.isFinite(Number(price)) || Number(price) <= 0) return;
+  const pos = paperById(id);
+  if (!pos) return;
+  pos[kind] = Number(Number(price).toFixed(2));
+  syncPaperLine();
+  if (persist) savePositionStops(id);
+}
+
+async function savePositionStops(id) {
+  const pos = paperById(id);
+  if (!pos) return;
+  try {
+    await paperPost({
+      action: "stops",
+      id,
+      tp: pos.tp ?? "",
+      sl: pos.sl ?? "",
+      price: replayFillPrice(),
+    });
+  } catch (error) {
+    window.alert(error.message);
+    loadPaperState();
+  }
+}
+
+function roundChip(x, y, w, h, r) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
+}
+
+function drawChip(x, y, w, h, border, fill, text, fg, action, extra) {
+  roundChip(x, y, w, h, 4);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.fillStyle = fg;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(text, x + w / 2, y + h / 2 + 0.5);
+  ctx.textAlign = "left";
+  paperTagHits.push({ x, y, w, h, action, ...extra });
+}
+
+function paperPriceY(price) {
+  const y = candleSeries.priceToCoordinate(price);
+  if (y != null && Number.isFinite(y)) {
+    return Math.min(overlayHeight - 16, Math.max(16, y));
+  }
+  const top = candleSeries.coordinateToPrice(8);
+  const bot = candleSeries.coordinateToPrice(overlayHeight - 8);
+  if (top == null || bot == null) return overlayHeight / 2;
+  const hi = Math.max(top, bot);
+  const lo = Math.min(top, bot);
+  if (price >= hi) return 16;
+  if (price <= lo) return overlayHeight - 16;
+  return overlayHeight / 2;
+}
+
+function paperClusterX(clusterW) {
+  const range = chart.timeScale().getVisibleLogicalRange();
+  let x = null;
+  if (range) {
+    const last = currentCandles.length ? currentCandles.length - 1 : range.to;
+    x = chart.timeScale().logicalToCoordinate(Math.min(range.to, last));
+  }
+  if (x == null || !Number.isFinite(x)) {
+    const lastBar = currentCandles[currentCandles.length - 1];
+    x = lastBar ? coordinateForTime(lastBar.time) : overlayWidth * 0.55;
+  }
+  if (x == null || !Number.isFinite(x)) x = overlayWidth * 0.55;
+  return Math.min(Math.max(8, x + 10), Math.max(8, overlayWidth - clusterW - 16));
+}
+
+function drawPaperTags() {
+  paperTagHits = [];
+  const rows = paperPositions();
+  if (!rows.length) return;
+  const now = replayFillPrice();
+  ctx.save();
+  ctx.font = "700 11px Inter, sans-serif";
+  const usedY = [];
+  const placeY = (raw) => {
+    let y = raw;
+    for (let i = 0; i < 10; i += 1) {
+      if (usedY.every((other) => Math.abs(other - y) > 26)) break;
+      y += 26;
+    }
+    usedY.push(y);
+    return y;
+  };
+
+  const levelTag = (pos, price, label, pnl, border, kind) => {
+    const y = candleSeries.priceToCoordinate(price);
+    if (y == null) return;
+    const text = `${label}  ${fmtPnl(pnl)}`;
+    const h = 22;
+    const w = Math.ceil(ctx.measureText(`${text}  ×`).width) + 18;
+    const x = Math.max(8, overlayWidth - w - 14);
+    const top = y - h / 2;
+    roundChip(x, top, w, h, 4);
+    ctx.fillStyle = "#0b0e11ee";
+    ctx.fill();
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = border;
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x + 8, y + 0.5);
+    ctx.fillText("×", x + w - 14, y + 0.5);
+    paperTagHits.push({ x, y: top, w, h, action: "drag", kind, id: pos.id, price });
+    paperTagHits.push({ x: x + w - 22, y: top, w: 22, h, action: "clear", kind, id: pos.id });
+  };
+
+  rows.forEach((pos) => {
+    const { tp, sl } = currentPaperLevels(pos);
+    const short = isPaperShort(pos);
+    const suggest = suggestedPaperLevels(pos);
+    const nowPnl = now != null ? paperNetPnl(pos, now, "market") : 0;
+    const tpPnl = tp != null ? paperNetPnl(pos, tp, "limit") : null;
+    const slPnl = sl != null ? paperNetPnl(pos, sl, "stop") : null;
+    if (tp != null) levelTag(pos, tp, "TP", tpPnl, "#00c076", "tp");
+    if (sl != null) levelTag(pos, sl, "SL", slPnl, "#f0b90b", "sl");
+    const y = placeY(paperPriceY(Number(pos.entryFill)));
+    const h = 24;
+    const reverseW = 28;
+    const tpW = 36;
+    const slW = 36;
+    const qtyText = Number(pos.quantity).toFixed(3);
+    const sideText = short ? "Short" : "Long";
+    const pnlText = fmtPnl(nowPnl);
+    const qtyW = Math.ceil(ctx.measureText(qtyText).width) + 16;
+    const posW = Math.ceil(ctx.measureText(`${sideText} ${pnlText}`).width) + 16;
+    const closeW = 26;
+    const barW = qtyW + posW + closeW;
+    const clusterW = reverseW + 4 + tpW + slW + 8 + barW;
+    const x = paperClusterX(clusterW);
+    const top = y - h / 2;
+    const teal = "#00c076";
+    const orange = "#f0b90b";
+    const red = "#f6465d";
+    const dark = "#0b0e11ee";
+    drawChip(x, top, reverseW, h, red, dark, short ? "↑" : "↓", red, "reverse", { id: pos.id });
+    drawChip(x + reverseW + 4, top, tpW, h, teal, tp != null ? "#00c07633" : dark, "TP", teal, "toggle-tp", {
+      id: pos.id, price: suggest.tp,
+    });
+    drawChip(x + reverseW + 4 + tpW, top, slW, h, orange, sl != null ? "#f0b90b33" : dark, "SL", orange, "toggle-sl", {
+      id: pos.id, price: suggest.sl,
+    });
+    const barX = x + reverseW + 4 + tpW + slW + 8;
+    roundChip(barX, top, barW, h, 4);
+    ctx.fillStyle = dark;
+    ctx.fill();
+    ctx.strokeStyle = short ? red : teal;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = short ? red : teal;
+    ctx.textBaseline = "middle";
+    ctx.fillText(qtyText, barX + 8, y + 0.5);
+    ctx.fillStyle = nowPnl < 0 ? red : teal;
+    ctx.fillText(`${sideText} ${pnlText}`, barX + qtyW, y + 0.5);
+    ctx.fillStyle = short ? red : teal;
+    ctx.fillText("×", barX + qtyW + posW + 6, y + 0.5);
+    paperTagHits.push({ x: barX, y: top, w: qtyW + posW, h, action: "none", id: pos.id });
+    paperTagHits.push({ x: barX + qtyW + posW, y: top, w: closeW, h, action: "exit", id: pos.id });
+  });
+  ctx.restore();
+}
+
+function hitPaperTag(clientX, clientY) {
+  if (!isInsidePlotArea(clientX, clientY) || !paperTagHits.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  for (let i = paperTagHits.length - 1; i >= 0; i -= 1) {
+    const tag = paperTagHits[i];
+    if (x >= tag.x && x <= tag.x + tag.w && y >= tag.y && y <= tag.y + tag.h) return tag;
+  }
+  return null;
+}
+
+function hitPaperStop(clientX, clientY) {
+  if (!isInsidePlotArea(clientX, clientY)) return null;
+  const rect = canvas.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const hit = (price) => {
+    const py = candleSeries.priceToCoordinate(price);
+    return py != null && Math.abs(py - y) <= 8;
+  };
+  const rows = paperPositions();
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const pos = rows[i];
+    const { tp, sl } = currentPaperLevels(pos);
+    if (tp != null && hit(tp)) return { kind: "tp", id: pos.id };
+    if (sl != null && hit(sl)) return { kind: "sl", id: pos.id };
+  }
+  return null;
+}
+
+function placePaperStopAtPrice() {
+  return false;
+}
+
+function canPlacePaperStops() {
+  return false;
+}
+
+async function checkPaperStops() {
+  const rows = paperPositions();
+  if (!rows.length || paperChecking) return;
+  const needs = rows.some((pos) => {
+    const { tp, sl } = currentPaperLevels(pos);
+    return tp != null || sl != null;
+  });
+  if (!needs) return;
+  const entry = Math.min(...rows.map((pos) => Number(pos.entryTime) || 0));
+  const bars = currentCandles.filter((bar) => bar.time > entry);
+  const hit = rows.some((pos) => {
+    const { tp, sl } = currentPaperLevels(pos);
+    const short = isPaperShort(pos);
+    return bars.some((bar) => (
+      bar.time > Number(pos.entryTime)
+      && (short
+        ? (sl != null && bar.high >= sl) || (tp != null && bar.low <= tp)
+        : (sl != null && bar.low <= sl) || (tp != null && bar.high >= tp))
+    ));
+  });
+  if (!hit) return;
+  paperChecking = true;
+  try {
+    await paperPost({
+      action: "check",
+      bars: bars.map((bar) => ({
+        time: bar.time,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+      })),
+    });
+  } catch {
+    /* older server without check */
+  } finally {
+    paperChecking = false;
+  }
+}
+
+function fillFeedSelect(payload) {
+  const select = document.getElementById("data-feed");
+  if (!select) return;
+  const feeds = Array.isArray(payload.feeds) ? payload.feeds : [];
+  const current = payload.feed || "";
+  select.innerHTML = "";
+  feeds.forEach((feed) => {
+    const option = document.createElement("option");
+    option.value = feed.id;
+    option.textContent = feed.name || feed.id;
+    select.appendChild(option);
+  });
+  if (current) select.value = current;
+  select.disabled = feeds.length < 2;
+}
+
+function applyFeedMeta(payload) {
+  const name = payload.name || payload.feed || "Gold";
+  const symbol = payload.symbol || "";
+  const note = payload.note || "";
+  const nameEl = document.getElementById("symbol-name");
+  const codeEl = document.getElementById("symbol-code");
+  const noteEl = document.getElementById("source-note");
+  if (nameEl) nameEl.textContent = name;
+  if (codeEl) {
+    codeEl.textContent = symbol
+      ? `${symbol} · GOLD_DATA/${payload.feed || ""} · replay`
+      : "Local 1-minute + daily archive · replay";
+  }
+  if (noteEl) {
+    noteEl.textContent = note || "1D/1W use Gold_Daily.csv · 1m/intraday use month files · no download";
+  }
+  document.title = `${name} Replay Chart`;
+  fillFeedSelect(payload);
+}
+
+async function applySourcePayload(payload) {
+  sourceCandles = payload.candles;
+  sourceVolumes = payload.volumes;
+  const dailyRaw = payload.dailyCandles || [];
+  const dailyVols = payload.dailyVolumes || [];
+  dailyCandles = dailyRaw.map((bar, i) => ({
+    ...bar,
+    volume: dailyVols[i]?.value ?? 0,
+  }));
+  applyFeedMeta(payload);
+  const saved = loadReplayCursor();
+  if (saved?.timeframe && TF_SECONDS[saved.timeframe]) {
+    applyTimeframe(saved.timeframe);
+  }
+  const start = istParts(dataStartTime());
+  const end = istParts(dataEndTime());
+  document.getElementById("jump-date").min = start.date;
+  document.getElementById("jump-date").max = end.date;
+  document.getElementById("status-right").textContent =
+    `${payload.timezone} · GOLD_DATA/${payload.feed || ""} · ${payload.files.join(", ")}`;
+  if (saved?.time) {
+    setReplayTime(saved.time);
+    snapToReplayWindow();
+  } else {
+    const firstDate = istParts(sourceCandles[0].time).date;
+    sourceIndex = 0;
+    for (let i = 0; i < sourceCandles.length; i += 1) {
+      if (istParts(sourceCandles[i].time).date !== firstDate) break;
+      sourceIndex = i;
+    }
+    replayTime = sourceCandles[sourceIndex].time;
+    saveReplayCursor();
+    renderChart();
+    chart.timeScale().setVisibleLogicalRange({
+      from: -5,
+      to: Math.min(180, sourceCandles.length) + 5,
+    });
+  }
+  chartEvents = [];
+  chartEventLabels = [];
+  eventsLoading = false;
+  updateEventHud();
+  if (eventsEnabled) loadChartEvents();
+  loadPaperState();
+}
+
 async function loadSource() {
   loading.style.display = "block";
   errorBox.style.display = "none";
@@ -900,42 +2582,30 @@ async function loadSource() {
     const response = await fetch("/api/source");
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not load gold data");
-    sourceCandles = payload.candles;
-    sourceVolumes = payload.volumes;
-    const dailyRaw = payload.dailyCandles || [];
-    const dailyVols = payload.dailyVolumes || [];
-    dailyCandles = dailyRaw.map((bar, i) => ({
-      ...bar,
-      volume: dailyVols[i]?.value ?? 0,
-    }));
-    const saved = loadReplayCursor();
-    if (saved?.timeframe && TF_SECONDS[saved.timeframe]) {
-      applyTimeframe(saved.timeframe);
-    }
-    const start = istParts(dataStartTime());
-    const end = istParts(dataEndTime());
-    document.getElementById("jump-date").min = start.date;
-    document.getElementById("jump-date").max = end.date;
-    document.getElementById("status-right").textContent =
-      `${payload.timezone} · ${payload.files.join(", ")}`;
-    if (saved?.time) {
-      setReplayTime(saved.time);
-      snapToReplayWindow();
-    } else {
-      const firstDate = istParts(sourceCandles[0].time).date;
-      sourceIndex = 0;
-      for (let i = 0; i < sourceCandles.length; i += 1) {
-        if (istParts(sourceCandles[i].time).date !== firstDate) break;
-        sourceIndex = i;
-      }
-      replayTime = sourceCandles[sourceIndex].time;
-      saveReplayCursor();
-      renderChart();
-      chart.timeScale().setVisibleLogicalRange({
-        from: -5,
-        to: Math.min(180, sourceCandles.length) + 5,
-      });
-    }
+    await applySourcePayload(payload);
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.style.display = "block";
+  } finally {
+    loading.style.display = "none";
+  }
+}
+
+async function switchDataFeed(feedId) {
+  if (!feedId) return;
+  loading.style.display = "block";
+  errorBox.style.display = "none";
+  try {
+    const response = await fetch("/api/feed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: feedId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not switch gold data");
+    pauseReplay();
+    setEventsEnabled(false);
+    await applySourcePayload(payload);
   } catch (error) {
     errorBox.textContent = error.message;
     errorBox.style.display = "block";
@@ -961,27 +2631,65 @@ function switchTimeframe(timeframe) {
   snapToReplayWindow();
 }
 
-// The overlay must stop where the axes begin, otherwise it swallows clicks meant
-// for the right price scale and the bottom time scale.
-function plotAreaSize() {
-  const rect = shell.getBoundingClientRect();
-  let axisWidth = 0;
-  let axisHeight = 0;
+let overlayLeft = 0;
+let overlayTop = 0;
+let overlaySyncRaf = 0;
+let overlaySyncFrames = 0;
+const horizontalPriceLines = [];
+
+// Match the LWC series pane, not the whole shell: axis size changes when
+// candles are zoomed, and a mismatch shifts every horizontal off its price.
+function plotAreaMetrics() {
+  const shellRect = shell.getBoundingClientRect();
+  let width = 0;
+  let height = 0;
   try {
-    axisWidth = chart.priceScale("right").width() || 0;
-    axisHeight = chart.timeScale().height() || 0;
+    if (typeof chart.paneSize === "function") {
+      const pane = chart.paneSize();
+      width = pane?.width || 0;
+      height = pane?.height || 0;
+    }
   } catch {
-    // Scales are not measurable before the first paint; full size is fine then.
+    width = 0;
+    height = 0;
+  }
+  if (!width || !height) {
+    let axisWidth = 0;
+    let axisHeight = 0;
+    try {
+      axisWidth = chart.priceScale("right").width() || 0;
+      axisHeight = chart.timeScale().height() || 0;
+    } catch {
+      // Scales are not measurable before the first paint.
+    }
+    width = Math.max(1, shellRect.width - axisWidth);
+    height = Math.max(1, shellRect.height - axisHeight);
+  }
+
+  let left = 0;
+  let top = 0;
+  const paneCanvas = chartElement.querySelector("table tr:first-child td:first-child canvas");
+  if (paneCanvas) {
+    const paneRect = paneCanvas.getBoundingClientRect();
+    left = paneRect.left - shellRect.left;
+    top = paneRect.top - shellRect.top;
   }
   return {
-    width: Math.max(1, rect.width - axisWidth),
-    height: Math.max(1, rect.height - axisHeight),
+    left,
+    top,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
   };
+}
+
+function plotAreaSize() {
+  const { width, height } = plotAreaMetrics();
+  return { width, height };
 }
 
 function applyOverlayGeometry() {
   const ratio = window.devicePixelRatio || 1;
-  const { width, height } = plotAreaSize();
+  const { left, top, width, height } = plotAreaMetrics();
   const bitmapWidth = Math.max(1, Math.floor(width * ratio));
   const bitmapHeight = Math.max(1, Math.floor(height * ratio));
 
@@ -991,9 +2699,18 @@ function applyOverlayGeometry() {
     canvas.height = bitmapHeight;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
-  if (overlayWidth !== width || overlayHeight !== height) {
+  if (
+    overlayWidth !== width ||
+    overlayHeight !== height ||
+    overlayLeft !== left ||
+    overlayTop !== top
+  ) {
+    canvas.style.left = `${left}px`;
+    canvas.style.top = `${top}px`;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+    overlayLeft = left;
+    overlayTop = top;
     overlayWidth = width;
     overlayHeight = height;
   }
@@ -1002,6 +2719,63 @@ function applyOverlayGeometry() {
 function resizeDrawingCanvas() {
   applyOverlayGeometry();
   drawOverlay();
+}
+
+// Time-scale events fire before the price scale finishes layout. Draw now so
+// pans stay glued, then again on the next frames once candle height is final.
+function scheduleOverlayDraw(frames = 3) {
+  overlaySyncFrames = Math.max(overlaySyncFrames, frames);
+  if (overlaySyncRaf) return;
+  const step = () => {
+    overlaySyncRaf = 0;
+    applyOverlayGeometry();
+    drawOverlay();
+    overlaySyncFrames -= 1;
+    if (overlaySyncFrames > 0) {
+      overlaySyncRaf = requestAnimationFrame(step);
+    }
+  };
+  overlaySyncRaf = requestAnimationFrame(step);
+}
+
+function onChartViewChange() {
+  drawOverlay();
+  scheduleOverlayDraw(4);
+}
+
+let overlayPainting = false;
+const horizontalPriceLineKeys = [];
+
+function syncHorizontalPriceLines() {
+  const horizontals = drawings.filter((drawing) => drawing.type === "horizontal");
+  while (horizontalPriceLines.length > horizontals.length) {
+    const line = horizontalPriceLines.pop();
+    horizontalPriceLineKeys.pop();
+    try {
+      candleSeries.removePriceLine(line);
+    } catch {
+      // Series may already have dropped the line.
+    }
+  }
+  horizontals.forEach((drawing, index) => {
+    const selected = drawings.indexOf(drawing) === selectedDrawing;
+    const options = {
+      price: drawing.price,
+      color: colorWithAlpha(drawingColor(drawing), drawingOpacity(drawing)),
+      lineWidth: selected ? 2 : 1,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible: true,
+      title: "",
+    };
+    const key = `${options.price}|${options.color}|${options.lineWidth}`;
+    if (horizontalPriceLines[index]) {
+      if (horizontalPriceLineKeys[index] === key) return;
+      horizontalPriceLines[index].applyOptions(options);
+    } else {
+      horizontalPriceLines[index] = candleSeries.createPriceLine(options);
+    }
+    horizontalPriceLineKeys[index] = key;
+  });
 }
 
 function isInsidePlotArea(clientX, clientY) {
@@ -1128,20 +2902,32 @@ function coordinateForTime(time) {
 }
 
 function drawOverlay() {
-  // The price scale widens when labels get longer, so keep the overlay in step.
-  const plot = plotAreaSize();
-  if (
-    Math.abs(plot.width - overlayWidth) > 0.5 ||
-    Math.abs(plot.height - overlayHeight) > 0.5
-  ) {
-    applyOverlayGeometry();
+  if (overlayPainting) return;
+  overlayPainting = true;
+  try {
+    // Axis width/height change when candle zoom changes; keep overlay on the pane.
+    const plot = plotAreaMetrics();
+    if (
+      Math.abs(plot.width - overlayWidth) > 0.5 ||
+      Math.abs(plot.height - overlayHeight) > 0.5 ||
+      Math.abs(plot.left - overlayLeft) > 0.5 ||
+      Math.abs(plot.top - overlayTop) > 0.5
+    ) {
+      applyOverlayGeometry();
+    }
+    syncHorizontalPriceLines();
+    ctx.clearRect(0, 0, overlayWidth, overlayHeight);
+    drawings.forEach((drawing, index) => drawOne(drawing, false, index));
+    if (measurement) drawOne(measurement, false, null);
+    drawDraft();
+    drawToolCrosshair();
+    drawPaperArrows();
+    drawPaperTags();
+    drawEventLabelRays();
+    updateSelectionUi();
+  } finally {
+    overlayPainting = false;
   }
-  ctx.clearRect(0, 0, overlayWidth, overlayHeight);
-  drawings.forEach((drawing, index) => drawOne(drawing, false, index));
-  if (measurement) drawOne(measurement, false, null);
-  drawDraft();
-  drawToolCrosshair();
-  updateSelectionUi();
 }
 
 // Screen point the floating delete button should sit next to.
@@ -1343,10 +3129,14 @@ function drawOne(drawing, preview = false, index = null) {
   if (drawing.type === "horizontal") {
     const y = candleSeries.priceToCoordinate(drawing.price);
     if (y == null) return ctx.restore();
-    ctx.moveTo(0, y);
-    ctx.lineTo(overlayWidth, y);
-    ctx.stroke();
-    drawPriceTag(drawing.price, y, selected, color);
+    // Committed horizontals are native price lines so zoom cannot lift them
+    // off the price. Preview and text still draw here.
+    if (preview) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(overlayWidth, y);
+      ctx.stroke();
+      drawPriceTag(drawing.price, y, selected, color);
+    }
     if (drawing.text) drawHorizontalLabel(drawing, y, color);
   } else if (drawing.type === "ray") {
     drawRay(drawing, selected, color);
@@ -1577,28 +3367,26 @@ function drawPosition(drawing, selected, color) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // TradingView: points and percent inside each zone, both sides of entry.
-  const labelX = left + 6;
-  drawTextBox(
-    [`Close  +${profitPts.toFixed(2)}  (+${profitPct.toFixed(2)}%)`],
-    labelX,
-    (entry.y + target.y) / 2 - 12,
-    "#10675d"
-  );
-  drawTextBox(
-    [`Stop  −${lossPts.toFixed(2)}  (−${lossPct.toFixed(2)}%)`],
-    labelX,
-    (entry.y + stop.y) / 2 - 12,
-    "#8f2d2b"
-  );
-  drawTextBox(
-    [`${drawing.type === "long" ? "LONG" : "SHORT"}  R:R ${ratio.toFixed(2)}`],
-    right - 118,
-    entry.y - 20,
-    "#1e222d"
-  );
-
   if (selected) {
+    const labelX = left + 6;
+    drawTextBox(
+      [`Close  +${profitPts.toFixed(2)}  (+${profitPct.toFixed(2)}%)`],
+      labelX,
+      (entry.y + target.y) / 2 - 12,
+      "#10675d"
+    );
+    drawTextBox(
+      [`Stop  −${lossPts.toFixed(2)}  (−${lossPct.toFixed(2)}%)`],
+      labelX,
+      (entry.y + stop.y) / 2 - 12,
+      "#8f2d2b"
+    );
+    drawTextBox(
+      [`${drawing.type === "long" ? "LONG" : "SHORT"}  R:R ${ratio.toFixed(2)}`],
+      right - 118,
+      entry.y - 20,
+      "#1e222d"
+    );
     drawHandle(entry);
     drawSquareHandle(target, "#26a69a");
     drawSquareHandle(stop, "#ef5350");
@@ -1834,7 +3622,9 @@ function refreshDraft(shiftKey) {
 
 function toolHelpText(stage) {
   const help = {
-    cursor: "Pan/zoom · drag drawings or handles to move",
+    cursor: followHead
+      ? "Pan/zoom · drag drawings or handles to move"
+      : "Follow off · drag to pan time and price · Shift+wheel zooms price",
     trend: stage === "second"
       ? "Trendline: release or click the second point · hold Shift for straight"
       : "Trendline: drag from one point to the other · hold Shift for straight",
@@ -1979,10 +3769,73 @@ shell.addEventListener("pointerdown", (event) => {
   if (activeTool !== "cursor" || event.button !== 0) return;
   // Let the price/time scales handle their own drags.
   if (!isInsidePlotArea(event.clientX, event.clientY)) return;
+  const tagHit = hitPaperTag(event.clientX, event.clientY);
+  if (tagHit) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    paperPlacePress = null;
+    if (tagHit.action === "clear") {
+      clearPaperLevel(tagHit.kind, tagHit.id);
+      return;
+    }
+    if (tagHit.action === "toggle-tp") {
+      const pos = paperById(tagHit.id);
+      if (pos && currentPaperLevels(pos).tp != null) clearPaperLevel("tp", tagHit.id);
+      else setPaperLevel("tp", tagHit.price, tagHit.id);
+      return;
+    }
+    if (tagHit.action === "toggle-sl") {
+      const pos = paperById(tagHit.id);
+      if (pos && currentPaperLevels(pos).sl != null) clearPaperLevel("sl", tagHit.id);
+      else setPaperLevel("sl", tagHit.price, tagHit.id);
+      return;
+    }
+    if (tagHit.action === "exit") {
+      paperClose(tagHit.id);
+      return;
+    }
+    if (tagHit.action === "reverse") {
+      paperReverse(tagHit.id);
+      return;
+    }
+    if (tagHit.action === "drag") {
+      paperStopDrag = { kind: tagHit.kind, id: tagHit.id, pointerId: event.pointerId, moved: false };
+      setChartInteraction(false);
+      try { shell.setPointerCapture(event.pointerId); } catch { /* optional */ }
+      setChartCursor("ns-resize");
+    }
+    return;
+  }
+  const paperHit = hitPaperStop(event.clientX, event.clientY);
+  if (paperHit) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    paperStopDrag = { kind: paperHit.kind, id: paperHit.id, pointerId: event.pointerId, moved: false };
+    paperPlacePress = null;
+    setChartInteraction(false);
+    try { shell.setPointerCapture(event.pointerId); } catch { /* optional */ }
+    setChartCursor("ns-resize");
+    return;
+  }
   const hadMeasurement = clearMeasurement();
   const hit = hitDrawing(event.clientX, event.clientY);
   if (!hit) {
     selectedDrawing = null;
+    if (!followHead && isInsidePlotArea(event.clientX, event.clientY)) {
+      const range = lockedPriceRange || visiblePriceRange();
+      const height = overlayHeight || plotAreaMetrics().height || 1;
+      if (range) {
+        pricePan = {
+          pointerId: event.pointerId,
+          startY: event.clientY,
+          min: range.minValue,
+          max: range.maxValue,
+          height,
+        };
+      }
+    }
     drawOverlay();
     return;
   }
@@ -2015,9 +3868,36 @@ shell.addEventListener("pointerdown", (event) => {
 
 shell.addEventListener("pointermove", (event) => {
   if (activeTool !== "cursor") return;
+  if (pricePan && event.pointerId === pricePan.pointerId) {
+    applyPricePan(event);
+    return;
+  }
+  if (paperStopDrag && event.pointerId === paperStopDrag.pointerId) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    paperStopDrag.moved = true;
+    const rect = canvas.getBoundingClientRect();
+    const price = candleSeries.coordinateToPrice(event.clientY - rect.top);
+    if (price == null || !Number.isFinite(price)) return;
+    setPaperLevel(paperStopDrag.kind, price, paperStopDrag.id, false);
+    return;
+  }
+  if (paperPlacePress && event.pointerId === paperPlacePress.pointerId) {
+    const dist = Math.hypot(event.clientX - paperPlacePress.x, event.clientY - paperPlacePress.y);
+    if (dist > 6) paperPlacePress = null;
+  }
   if (!dragState) {
     if (!isInsidePlotArea(event.clientX, event.clientY)) {
       setChartCursor("default");
+      return;
+    }
+    if (hitPaperTag(event.clientX, event.clientY)?.action === "drag" || hitPaperStop(event.clientX, event.clientY)) {
+      setChartCursor("ns-resize");
+      return;
+    }
+    if (hitPaperTag(event.clientX, event.clientY)) {
+      setChartCursor("pointer");
       return;
     }
     const hit = hitDrawing(event.clientX, event.clientY);
@@ -2131,6 +4011,34 @@ function shiftTrendline(drawing, original, dLogical, dPrice) {
 }
 
 function finishDrag(event) {
+  if (pricePan && event.pointerId === pricePan.pointerId) {
+    applyPricePan(event);
+    pricePan = null;
+    lockCurrentPriceRange();
+    return;
+  }
+  if (!followHead && isOnPriceAxis(event.clientX, event.clientY)) {
+    window.requestAnimationFrame(() => {
+      if (!followHead && !pricePan) lockCurrentPriceRange();
+    });
+  }
+  if (paperStopDrag && event.pointerId === paperStopDrag.pointerId) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (shell.hasPointerCapture(event.pointerId)) {
+      shell.releasePointerCapture(event.pointerId);
+    }
+    const drag = paperStopDrag;
+    paperStopDrag = null;
+    setChartInteraction(true);
+    if (drag.id != null) savePositionStops(drag.id);
+    setChartCursor("crosshair");
+    return;
+  }
+  if (paperPlacePress && event.pointerId === paperPlacePress.pointerId) {
+    paperPlacePress = null;
+    return;
+  }
   if (!dragState || event.pointerId !== dragState.pointerId) return;
   event.preventDefault();
   event.stopPropagation();
@@ -2173,7 +4081,6 @@ function goToEnteredTime() {
   const time = parseIstInput(dateStr, timeStr || "23:59");
   if (time == null) return;
   pauseReplay();
-  followHead = false;
   jumpToTime(time);
   snapToReplayWindow();
 }
@@ -2232,14 +4139,25 @@ shell.addEventListener("dblclick", (event) => {
   startTextEdit(hit.index);
 });
 document.getElementById("fit").addEventListener("click", () => {
-  followHead = false;
-  chart.timeScale().fitContent();
+  setFollowHead(false, { snap: false });
+  lockedPriceRange = null;
+  followProgrammatic += 1;
+  try {
+    chart.priceScale("right").applyOptions({ autoScale: true });
+    chart.timeScale().fitContent();
+  } finally {
+    window.setTimeout(() => {
+      followProgrammatic = Math.max(0, followProgrammatic - 1);
+      if (!followHead) {
+        lockCurrentPriceRange();
+        refreshLockedPriceScale();
+      }
+    }, 0);
+  }
   drawOverlay();
 });
-document.getElementById("follow").addEventListener("click", () => {
-  followHead = true;
-  keepHeadInView();
-  drawOverlay();
+document.querySelectorAll("[data-follow]").forEach((button) => {
+  button.addEventListener("click", () => setFollowHead(!followHead));
 });
 document.getElementById("jump").addEventListener("click", goToEnteredTime);
 document.getElementById("jump-date").addEventListener("change", goToEnteredTime);
@@ -2263,6 +4181,28 @@ document.getElementById("next-day").addEventListener("click", () => {
   pauseReplay();
   jumpNextDay();
 });
+document.getElementById("events-toggle").addEventListener("click", () => {
+  if (eventsLoading && eventsEnabled) return;
+  setEventsEnabled(!eventsEnabled);
+});
+document.getElementById("event-prev").addEventListener("click", () => {
+  pauseReplay();
+  jumpPrevEvent();
+});
+document.getElementById("event-next").addEventListener("click", () => {
+  pauseReplay();
+  jumpNextEvent();
+});
+document.getElementById("event-labels-toggle").addEventListener("click", () => {
+  if (!eventsEnabled) return;
+  setEventLabelsEnabled(!eventLabelsOn);
+});
+document.getElementById("event-label-count").addEventListener("input", (event) => {
+  setEventLabelCount(event.target.value);
+});
+document.getElementById("event-label-count-num").addEventListener("change", (event) => {
+  setEventLabelCount(event.target.value);
+});
 
 function setSpeed(value) {
   const seconds = Math.max(0.5, Math.min(60, Number(value) || 5));
@@ -2277,15 +4217,86 @@ document.getElementById("speed").addEventListener("input", (event) => {
 document.getElementById("speed-num").addEventListener("change", (event) => {
   setSpeed(event.target.value);
 });
+document.getElementById("paper-submit").addEventListener("click", paperSubmit);
+document.getElementById("paper-close").addEventListener("click", () => paperClose());
+document.getElementById("paper-book-save").addEventListener("click", paperSaveBook);
+document.getElementById("ticket-long").addEventListener("click", () => setPaperSide("long"));
+document.getElementById("ticket-short").addEventListener("click", () => setPaperSide("short"));
+document.getElementById("paper-tpsl-toggle").addEventListener("click", () => togglePaperTpsl());
+document.getElementById("paper-size").addEventListener("input", () => {
+  updateTicketPreview();
+  const submit = paperField("paper-submit");
+  if (submit) submit.disabled = Number(paperField("paper-size").value) <= 0;
+});
+document.getElementById("paper-size-usdt").addEventListener("input", () => {
+  const cash = Number(paperState?.cash ?? 0);
+  const usdt = Number(paperField("paper-size-usdt").value);
+  if (cash > 0 && Number.isFinite(usdt)) {
+    paperField("paper-size").value = String(Math.max(0, Math.min(100, (usdt / cash) * 100)));
+  }
+  updateTicketPreview();
+});
+["paper-leverage", "paper-slip", "paper-taker", "paper-capital"].forEach((id) => {
+  document.getElementById(id).addEventListener("input", updateTicketPreview);
+});
+document.getElementById("paper-arrows-toggle").addEventListener("click", () => {
+  setPaperArrowsEnabled(!paperArrowsOn);
+});
+document.getElementById("paper-arrow-size").addEventListener("input", (event) => {
+  setPaperArrowSize(event.target.value);
+});
+document.getElementById("paper-arrow-size-num").addEventListener("change", (event) => {
+  setPaperArrowSize(event.target.value);
+});
+setPaperArrowsEnabled(paperArrowsOn);
+setPaperArrowSize(paperArrowSize);
+["paper-tp", "paper-sl"].forEach((id) => {
+  const el = document.getElementById(id);
+  el.addEventListener("input", () => {
+    syncPtsFromPrices();
+  });
+});
+document.getElementById("paper-tp-pts").addEventListener("input", () => {
+  applyPtsToPrice("tp");
+});
+document.getElementById("paper-sl-pts").addEventListener("input", () => {
+  applyPtsToPrice("sl");
+});
+document.getElementById("paper-tp-clear").addEventListener("click", () => clearPaperLevel("tp"));
+document.getElementById("paper-sl-clear").addEventListener("click", () => clearPaperLevel("sl"));
 
 chart.subscribeCrosshairMove((param) => {
-  const bar = param.seriesData.get(candleSeries);
+  let bar = param.seriesData.get(candleSeries);
+  if (bar && param.time != null) {
+    const time = typeof param.time === "number" ? param.time : Number(param.time);
+    bar = { open: bar.open, high: bar.high, low: bar.low, close: bar.close, time };
+  }
   updateOhlc(bar || currentCandles[currentCandles.length - 1]);
 });
-// Painted synchronously so drawings move in the same frame as the candles
-// instead of trailing them by one.
-chart.timeScale().subscribeVisibleLogicalRangeChange(drawOverlay);
+chart.timeScale().subscribeVisibleLogicalRangeChange(onChartViewChange);
+chart.timeScale().subscribeVisibleTimeRangeChange(onChartViewChange);
 new ResizeObserver(resizeDrawingCanvas).observe(shell);
+shell.addEventListener("wheel", (event) => {
+  scheduleOverlayDraw(6);
+  if (followHead) return;
+  if (isOnPriceAxis(event.clientX, event.clientY)) {
+    window.setTimeout(() => {
+      if (!followHead) lockCurrentPriceRange();
+    }, 0);
+    return;
+  }
+  if (!isInsidePlotArea(event.clientX, event.clientY)) return;
+  if (event.shiftKey || event.altKey) {
+    event.preventDefault();
+    zoomLockedPrice(event);
+  }
+}, { passive: false });
+chartElement.addEventListener("pointermove", (event) => {
+  if (event.buttons) scheduleOverlayDraw(2);
+  if (!followHead && event.buttons && isOnPriceAxis(event.clientX, event.clientY)) {
+    lockCurrentPriceRange();
+  }
+}, { passive: true });
 
 function refreshShiftConstraint(event) {
   refreshDraft(event.shiftKey);
@@ -2316,6 +4327,11 @@ window.addEventListener("keydown", (event) => {
     nextCandle();
   }
   if (event.key === "Escape") {
+    if (paperPlaceKind) {
+      idlePaperPlaceHint();
+      drawOverlay();
+      return;
+    }
     if (draftAnchor()) cancelDraft();
     else setTool("cursor");
   }
@@ -2327,4 +4343,9 @@ window.addEventListener("keyup", (event) => {
   if (event.key === "Shift") refreshShiftConstraint(event);
 });
 
+setFollowHead(followHead, { snap: false });
+syncEventLabelControls();
+document.getElementById("data-feed").addEventListener("change", (event) => {
+  switchDataFeed(event.target.value);
+});
 loadSource();

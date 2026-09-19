@@ -1,0 +1,22 @@
+---
+description: Gold day candles from 1m must use CoinDCX/XAUUSDT 05:30 IST UTC cut, not IST midnight
+globs: gold_chart/**,GOLD_DATA/**
+alwaysApply: false
+---
+
+# Gold daily cut (CoinDCX / TradingView XAUUSDT)
+
+When building **day candles from gold 1-minute data**, do **not** group by IST midnight (`00:00`–`23:59` Asia/Kolkata).
+
+Match **CoinDCX XAUUSDT** and **TradingView XAUUSDT** (crypto UTC day):
+
+- Include `05:30:00` IST through next day `05:29:00` IST
+- Next day `05:30:00` IST starts the next daily bar
+- That is `00:00`–`23:59` UTC
+- Label the daily with the UTC date (= IST date of the 05:30 open)
+
+1m source: `GOLD_DATA/Yahoo_Finance/*_YYYY.csv` or `GOLD_DATA/TradingView_Vantage/*_YYYY.csv` with `Datetime` already in IST (`+05:30`). Bucket with `(Datetime_IST - 5h30m).date()` or convert to UTC and take the UTC date.
+
+OHLC: first Open, max High, min Low, last Close, sum Volume. Do not use Yahoo `Gold_Daily.csv` (that is COMEX/US session). Vantage daily is in `GOLD_DATA/TradingView_Vantage/Gold_Daily.csv`. Do not use COMEX 6pm ET or forex 5pm NY cuts.
+
+Full prompt: `gold_chart/XAUUSDT_DAILY_CUT_PROMPT.md`

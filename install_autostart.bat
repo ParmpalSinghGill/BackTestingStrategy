@@ -8,7 +8,8 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Gold fetch: every 30 minutes, at sign-in, and a Startup keepalive loop.
-echo Swing forecasts / live backtest scanners: weekdays 16:00 and at sign-in.
+echo Gold chart :8766: Windows startup and every 15 min if it dropped.
+echo Gold fetch: Windows startup, sign-in, and every 6 hours (hidden).
+echo Swing forecasts: Windows startup, sign-in, and weekdays 16:00.
 echo.
 pause

@@ -1,11 +1,11 @@
-"""Download COMEX gold (GC=F) into GOLD_DATA.
+"""Download COMEX gold (GC=F) into GOLD_DATA/Yahoo_Finance.
 
-1-minute bars (Yahoo keeps ~30 days; local archive grows with each run):
-  GOLD_DATA/September_2026.csv
-  GOLD_DATA/October_2026.csv
+1-minute bars:
+  GOLD_DATA/Yahoo_Finance/September_2026.csv
+Daily bars:
+  GOLD_DATA/Yahoo_Finance/Gold_Daily.csv
 
-Daily bars (full Yahoo history, then incremental from last stored date):
-  GOLD_DATA/Gold_Daily.csv
+Vantage XAUUSD is a separate subfolder: GOLD_DATA/TradingView_Vantage
 
 Usage:
     python src/data_fetchers/fetch_gold_1min.py
@@ -28,7 +28,7 @@ import pandas as pd
 import yfinance as yf
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = BASE_DIR / "GOLD_DATA"
+OUTPUT_DIR = BASE_DIR / "GOLD_DATA" / "Yahoo_Finance"
 SYMBOL = "GC=F"
 INTERVAL = "1m"
 DAILY_INTERVAL = "1d"
@@ -57,10 +57,10 @@ MONTH_NAMES = (
 MONTH_INDEX = {name: i for i, name in enumerate(MONTH_NAMES, start=1)}
 TASK_NAME = "StockBacktest_FetchGold1m"
 TASK_SPECS = (
-    (TASK_NAME, ("/SC", "MINUTE", "/MO", "30")),
+    (TASK_NAME, ("/SC", "HOURLY", "/MO", "6")),
     (f"{TASK_NAME}_Logon", ("/SC", "ONLOGON")),
 )
-DAILY_TIMES = ("every 30 min",)
+DAILY_TIMES = ("every 6 hours",)
 
 logger = logging.getLogger("fetch_gold_1min")
 
@@ -102,6 +102,29 @@ def list_month_files() -> list[Path]:
         if parse_month_file(path) is not None:
             files.append(path)
     return files
+
+
+def write_xauusdt_session_daily() -> None:
+    """Rebuild CoinDCX/XAUUSDT UTC day candles from local 1m month files."""
+    frames = []
+    for path in list_month_files():
+        frame = normalize_frame(pd.read_csv(path))
+        if not frame.empty:
+            frames.append(frame)
+    if not frames:
+        logger.info("No 1m month files; skip %s", "Gold_Daily_XAUUSDT_UTC.csv")
+        return
+    minute = normalize_frame(pd.concat(frames, ignore_index=True))
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    from gold_chart.events import write_xauusdt_utc_daily
+
+    daily = write_xauusdt_utc_daily(minute)
+    logger.info(
+        "XAUUSDT UTC daily: %s sessions -> %s",
+        f"{len(daily):,}",
+        OUTPUT_DIR / "Gold_Daily_XAUUSDT_UTC.csv",
+    )
 
 
 def normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -465,6 +488,10 @@ def run_update(force_days: int | None = None) -> int:
         logger.info("Update complete. Latest gold 1m bar: %s", latest)
         return daily_rc
     finally:
+        try:
+            write_xauusdt_session_daily()
+        except Exception as exc:
+            logger.warning("Could not write XAUUSDT UTC daily: %s", exc)
         lock_path.unlink(missing_ok=True)
 
 
@@ -475,13 +502,13 @@ def install_startup_cmd() -> bool:
         return False
     startup_dir = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     startup_dir.mkdir(parents=True, exist_ok=True)
-    target = startup_dir / "run_fetch_gold_1m.cmd"
-    python = sys.executable
+    old_cmd = startup_dir / "run_fetch_gold_1m.cmd"
+    old_cmd.unlink(missing_ok=True)
+    launcher = BASE_DIR / "run_fetch_gold_1m.vbs"
+    target = startup_dir / "run_fetch_gold_1m.vbs"
     target.write_text(
-        "@echo off\r\n"
-        f"cd /d {BASE_DIR}\r\n"
-        "if not exist GOLD_DATA mkdir GOLD_DATA\r\n"
-        f"\"{python}\" src\\data_fetchers\\fetch_gold_1min.py\r\n",
+        'Set sh = CreateObject("WScript.Shell")\r\n'
+        f'sh.Run "wscript.exe //nologo //B ""{launcher}""", 0, False\r\n',
         encoding="ascii",
     )
     logger.info("Startup login fetch: %s", target)
@@ -500,7 +527,7 @@ def install_task() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Download gold 1-minute and daily data into GOLD_DATA."
+        description="Download Yahoo gold into GOLD_DATA/Yahoo_Finance."
     )
     parser.add_argument(
         "--days",
