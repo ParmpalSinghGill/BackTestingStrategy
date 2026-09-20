@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gold Replay Chart</title>
-  <link rel="stylesheet" href="/app.css?v=30">
+  <link rel="stylesheet" href="/app.css?v=38">
   <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="symbol-icon">AU</div>
+    <div class="symbol-icon" id="symbol-icon">AU</div>
     <div>
       <div class="symbol-name" id="symbol-name">COMEX Gold Futures</div>
       <div class="symbol-code" id="symbol-code">GC=F · Local 1-minute + daily archive · replay</div>
     </div>
-    <label class="field feed-pick" title="Switch GOLD_DATA folder. Yahoo is COMEX futures; Vantage is TradingView XAUUSD.">Data
+    <label class="field feed-pick" title="Switch MARKET_DATA folder. Yahoo gold, Vantage gold, or Vantage silver.">Data
       <select id="data-feed"></select>
     </label>
     <div class="ohlc">
@@ -36,38 +36,6 @@
     <button class="tf" data-tf="1d" title="Full daily history from Gold_Daily.csv">1D</button>
     <button class="tf" data-tf="1w" title="Weekly bars built from the daily archive">1W</button>
     <div class="divider"></div>
-    <button class="tool active" data-tool="cursor" title="Pan and zoom">
-      <span class="tool-icon">↖</span>Cursor
-    </button>
-    <button class="tool" data-tool="trend" title="Drag from one point to the other, or click twice. Hold Shift to keep it straight (0°/45°/90°).">
-      <span class="tool-icon">╱</span>Trendline
-    </button>
-    <button class="tool" data-tool="horizontal" title="Click a price. Double-click or press T to add text.">
-      <span class="tool-icon">─</span>Horizontal
-    </button>
-    <button class="tool" data-tool="ray" title="Click a start price; extends right">
-      <span class="tool-icon">→</span>H-Ray
-    </button>
-    <button class="tool" data-tool="text" title="Click the chart, then type your note">
-      <span class="tool-icon">T</span>Text
-    </button>
-    <button class="tool" data-tool="measure" title="Drag across a range, or click twice">
-      <span class="tool-icon">↕</span>Measure
-    </button>
-    <button class="tool" data-tool="long" title="Click an entry, or drag to set the box width. Target and stop show points and percent.">
-      <span class="tool-icon">L</span>Long
-    </button>
-    <button class="tool" data-tool="short" title="Click an entry, or drag to set the box width. Target and stop show points and percent.">
-      <span class="tool-icon">S</span>Short
-    </button>
-    <button class="tool" data-tool="erase" title="Click a drawing to erase">
-      <span class="tool-icon">⌫</span>Erase
-    </button>
-    <button id="delete-one" class="danger" title="Delete the selected drawing (Del)" disabled>
-      <span class="tool-icon">🗑</span>Delete
-    </button>
-    <button id="clear" class="danger" title="Delete every drawing">Delete all</button>
-    <div class="divider"></div>
     <button id="fit" title="Fit revealed candles">Fit</button>
     <button id="follow" data-follow class="active" title="When on, Play and Next keep the current candle centered in time and price. When off, drag to pan both axes and Shift+wheel to zoom price.">Follow on</button>
   </nav>
@@ -82,6 +50,9 @@
     <button id="jump" title="Jump to this IST date. Dates before the 1m archive open the daily history.">Go</button>
     <div class="divider"></div>
     <button id="play" class="play" title="Space">Play</button>
+    <label class="field" title="How much time each Play or Next tick adds. Current candles = one full bar of the chart timeframe. Pick 1m / 5m / … (never larger than the chart) to pour that much new data into the same candle.">Next candle
+      <select id="replay-step"></select>
+    </label>
     <button id="follow-replay" data-follow class="active" title="When on, Play and Next keep the current candle centered in time and price. When off, drag to pan both axes and Shift+wheel to zoom price.">Follow on</button>
     <button id="next" title="Next candle of the current timeframe">Next</button>
     <button id="next-hour" title="Jump one hour forward">Next hour</button>
@@ -103,7 +74,7 @@
       <input id="paper-arrow-size-num" type="number" min="8" max="32" step="1" value="16">
     </label>
     <div class="divider"></div>
-    <label class="field">Sec / candle
+    <label class="field" title="Seconds between Play ticks. Each tick adds the Next candle step.">Sec / candle
       <input id="speed" type="range" min="0.5" max="15" step="0.5" value="5">
       <input id="speed-num" type="number" min="0.5" max="60" step="0.5" value="5">
     </label>
@@ -111,6 +82,50 @@
   </nav>
 
   <div class="workspace">
+  <aside class="drawbar" aria-label="Drawing tools">
+    <button class="tool active" data-tool="cursor" title="Cursor · pan and zoom (Esc)">
+      <span class="tool-icon">↖</span>
+    </button>
+    <button id="undo-drawing" title="Undo drawing (Ctrl+Z)" disabled>
+      <span class="tool-icon">↶</span>
+    </button>
+    <button id="redo-drawing" title="Redo drawing (Ctrl+Y)" disabled>
+      <span class="tool-icon">↷</span>
+    </button>
+    <span class="drawbar-sep"></span>
+    <button class="tool" data-tool="trend" title="Trendline · drag or click twice. Shift keeps it straight">
+      <span class="tool-icon">╱</span>
+    </button>
+    <button class="tool" data-tool="horizontal" title="Horizontal line · click a price">
+      <span class="tool-icon">─</span>
+    </button>
+    <button class="tool" data-tool="ray" title="Horizontal ray · click a start, extends right">
+      <span class="tool-icon">→</span>
+    </button>
+    <button class="tool" data-tool="text" title="Text · click the chart, then type">
+      <span class="tool-icon">T</span>
+    </button>
+    <button class="tool" data-tool="measure" title="Measure · drag across a range">
+      <span class="tool-icon">↕</span>
+    </button>
+    <span class="drawbar-sep"></span>
+    <button class="tool" data-tool="long" title="Long position · click an entry or drag the box">
+      <span class="tool-icon">L</span>
+    </button>
+    <button class="tool" data-tool="short" title="Short position · click an entry or drag the box">
+      <span class="tool-icon">S</span>
+    </button>
+    <span class="drawbar-sep"></span>
+    <button class="tool" data-tool="erase" title="Erase · click a drawing">
+      <span class="tool-icon">⌫</span>
+    </button>
+    <button id="delete-one" class="danger" title="Delete selected drawing (Del)" disabled>
+      <span class="tool-icon">🗑</span>
+    </button>
+    <button id="clear" class="danger" title="Delete every drawing">
+      <span class="tool-icon">✕</span>
+    </button>
+  </aside>
   <main id="chart-shell">
     <div id="watermark">GC=F · GOLD</div>
     <div id="chart"></div>
@@ -198,6 +213,7 @@
       <span id="paper-qty">~0.000 XAU</span>
       <span id="paper-max">Max Buy —</span>
     </div>
+    <div id="paper-held" class="paper-held" hidden></div>
     <input id="paper-size" type="range" min="0" max="100" step="1" value="100" title="% of available used as margin">
     <div class="ticket-size-save">
       <span>Size %</span>
@@ -207,6 +223,10 @@
       <div>
         <span>Available</span>
         <b id="paper-available">—</b>
+      </div>
+      <div>
+        <span>Set capital</span>
+        <b id="paper-setcap">—</b>
       </div>
       <div>
         <span>Actual capital</span>
@@ -242,7 +262,7 @@
       <label>Set capital
         <input id="paper-capital" type="number" min="1" step="1" value="10000">
       </label>
-      <p class="ticket-book-note">Starting money. Actual capital above moves with P&amp;L. Close trades before changing this.</p>
+      <p class="ticket-book-note" id="paper-capital-note">Starting money. Save applies it to Available when you have no open trades. Actual capital above moves with P&amp;L.</p>
       <label>Slippage %
         <input id="paper-slip" type="number" min="0" max="1" step="0.01" value="0.02">
       </label>
@@ -252,6 +272,13 @@
       </label>
       <p class="ticket-book-note">Broker charge on every market fill — entry and exit. CoinDCX takes 0.05% of trade value, then 18% GST on that fee. This is not slippage.</p>
       <button type="button" id="paper-book-save" class="ticket-set ticket-book-save">Save book settings</button>
+      <div class="ticket-book-files">
+        <div class="ticket-book-title">Ledgers</div>
+        <p class="ticket-book-note">CSV + Excel in the same folder. Transactions = every SET CAPITAL / buy / sell. Trades = closed orders with Exit 1–5. Daily = P&amp;L by IST day.</p>
+        <p class="ticket-book-path" id="paper-file-txn">gold_chart/paper/paper_transactions.xlsx</p>
+        <p class="ticket-book-path" id="paper-file-trades">gold_chart/paper/paper_trades.xlsx</p>
+        <p class="ticket-book-path" id="paper-file-daily">gold_chart/paper/paper_daily_pnl.xlsx</p>
+      </div>
     </div>
   </aside>
   </div>
@@ -264,6 +291,6 @@
     <span id="status-right">Asia/Kolkata</span>
   </footer>
 
-  <script src="app.js?v=49"></script>
+  <script src="app.js?v=58"></script>
 </body>
 </html>

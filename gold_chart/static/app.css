@@ -192,13 +192,18 @@ label.field {
 
 input[type="date"],
 input[type="time"],
-input[type="number"] {
+input[type="number"],
+label.field select {
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--panel-2);
   color: var(--text);
+}
+
+label.field select {
+  min-width: 148px;
 }
 
 input[type="date"] { width: 138px; }
@@ -308,9 +313,43 @@ button.paper-sell:hover { filter: brightness(1.08); background: #c62828; }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: 44px minmax(0, 1fr) 300px;
   min-width: 0;
   min-height: 0;
+}
+
+.drawbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  user-select: none;
+}
+.drawbar .tool,
+.drawbar button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+}
+.drawbar .tool-icon {
+  width: auto;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1;
+}
+.drawbar-sep {
+  width: 22px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .ticket {
@@ -641,11 +680,17 @@ button.paper-sell:hover { filter: brightness(1.08); background: #c62828; }
   border-color: #c62828;
   font-weight: 700;
 }
+.paper-held {
+  color: var(--gold);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
 .paper-books {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 132px;
+  gap: 6px;
+  max-height: 240px;
   overflow: auto;
 }
 .paper-book-row {
@@ -653,7 +698,7 @@ button.paper-sell:hover { filter: brightness(1.08); background: #c62828; }
   grid-template-columns: 52px 1fr auto;
   gap: 6px;
   align-items: center;
-  padding: 5px 8px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #16181e;
@@ -664,6 +709,44 @@ button.paper-sell:hover { filter: brightness(1.08); background: #c62828; }
 .paper-book-row.short { border-color: #f6465d55; }
 .paper-book-row .up { color: #00c076; }
 .paper-book-row .down { color: #f6465d; }
+.paper-book-value {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+}
+.paper-partial {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.paper-partial-qty {
+  width: 78px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #0f1218;
+  color: var(--text);
+  font-size: 11px;
+}
+.paper-partial button {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #1b1f29;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.paper-partial button[data-exit] {
+  background: #c62828;
+  border-color: #c62828;
+  color: #fff;
+}
 .ticket-fees {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -714,11 +797,28 @@ button.paper-sell:hover { filter: brightness(1.08); background: #c62828; }
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.ticket-book label input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .ticket-book-note {
   margin: -2px 0 4px;
   color: #787b86;
   font-size: 10px;
   line-height: 1.35;
+}
+.ticket-book-files {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.ticket-book-path {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.35;
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
 }
 .ticket-book-save {
   width: 100%;

@@ -37,7 +37,7 @@ OLD_STARTUP_NAMES = (
 GOLD_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Fetch Yahoo Finance GC=F and TradingView Vantage XAUUSD 1-minute/daily gold bars. Runs at sign-in and every 6 hours.</Description>
+    <Description>Fetch Yahoo gold, TradingView Vantage XAUUSD, and Vantage XAGUSD 1-minute/daily bars. Runs at sign-in and every 6 hours.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -270,7 +270,7 @@ def install_all() -> int:
         FORECAST_XML.format(forecast_bat=FORECAST_BAT, workdir=workdir, user_id=user_id),
     )
 
-    print("[autostart] Gold: Yahoo + TradingView/Vantage, hidden, startup + sign-in + every 6 hours (runs on battery)")
+    print("[autostart] Metals: Yahoo gold + Vantage gold/silver, hidden, startup + sign-in + every 6 hours")
     print("[autostart] Forecasts: Windows startup + sign-in + weekdays 16:00")
     print("[autostart] Gold chart :8766: Windows startup + sign-in")
     for name in OLD_TASKS:

@@ -24,7 +24,7 @@ import pandas as pd
 
 DISPLAY_TZ = "Asia/Kolkata"
 XAUUSDT_DAILY_NAME = "Gold_Daily_XAUUSDT_UTC.csv"
-XAUUSDT_DAILY_PATH = Path(__file__).resolve().parents[1] / "GOLD_DATA" / "Yahoo_Finance" / XAUUSDT_DAILY_NAME
+XAUUSDT_DAILY_PATH = Path(__file__).resolve().parents[1] / "MARKET_DATA" / "Yahoo_Finance_Gold" / XAUUSDT_DAILY_NAME
 TRIGGER_TOL = 0.0020
 WATCH_EXIT_DIST = 0.0040
 SESSION_ARM = 0.01
@@ -78,7 +78,7 @@ def to_hourly(minute: pd.DataFrame) -> pd.DataFrame:
 def drop_weekend_bars(df: pd.DataFrame, time_col: str | None = None) -> pd.DataFrame:
     """Remove Saturday/Sunday IST candles so labels use weekday liquidity only.
 
-    Weekend prints can exist in GOLD_DATA (spot/crypto). Treat them as missing
+    Weekend prints can exist in MARKET_DATA (spot/crypto). Treat them as missing
     for EventFinder-style pivots, PDH/PDL, hourly S/R, and NEAR/TOUCH.
     """
     if df is None or df.empty:
@@ -157,7 +157,7 @@ def write_xauusdt_utc_daily(
     minute: pd.DataFrame,
     path: Path | None = None,
 ) -> pd.DataFrame:
-    """Write GOLD_DATA/Yahoo_Finance/Gold_Daily_XAUUSDT_UTC.csv from local 1m files."""
+    """Write MARKET_DATA/.../Gold_Daily_XAUUSDT_UTC.csv from local 1m files."""
     daily = utc_session_daily(_indexed_minute(minute) if minute is not None else pd.DataFrame())
     target = Path(path) if path is not None else XAUUSDT_DAILY_PATH
     if daily.empty:

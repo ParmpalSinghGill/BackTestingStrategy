@@ -9,6 +9,8 @@ __pycache__/
 data/
 data_daily/
 GOLD_DATA/
+SILVER_DATA/
+MARKET_DATA/
 scratch/
 EQUITY_L.csv
 Stocks.txt

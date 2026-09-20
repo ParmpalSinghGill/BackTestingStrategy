@@ -1,11 +1,11 @@
-"""Download COMEX gold (GC=F) into GOLD_DATA/Yahoo_Finance.
+"""Download COMEX gold (GC=F) into MARKET_DATA/Yahoo_Finance_Gold.
 
 1-minute bars:
-  GOLD_DATA/Yahoo_Finance/September_2026.csv
+  MARKET_DATA/Yahoo_Finance_Gold/September_2026.csv
 Daily bars:
-  GOLD_DATA/Yahoo_Finance/Gold_Daily.csv
+  MARKET_DATA/Yahoo_Finance_Gold/Gold_Daily.csv
 
-Vantage XAUUSD is a separate subfolder: GOLD_DATA/TradingView_Vantage
+Vantage gold and silver live in sibling MARKET_DATA subfolders.
 
 Usage:
     python src/data_fetchers/fetch_gold_1min.py
@@ -13,7 +13,7 @@ Usage:
     python src/data_fetchers/fetch_gold_1min.py --days 30
 
 The 6-hour hidden job (run_fetch_gold_1m.vbs) runs this script, then
-src/data_fetchers/fetch_vantage_gold.py, so both GOLD_DATA feeds stay current.
+Vantage gold and Vantage silver, so all MARKET_DATA feeds stay current.
 """
 
 from __future__ import annotations
@@ -31,7 +31,8 @@ import pandas as pd
 import yfinance as yf
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = BASE_DIR / "GOLD_DATA" / "Yahoo_Finance"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from market_paths import YAHOO_FINANCE_GOLD as OUTPUT_DIR, write_readme
 SYMBOL = "GC=F"
 INTERVAL = "1m"
 DAILY_INTERVAL = "1d"
@@ -70,6 +71,7 @@ logger = logging.getLogger("fetch_gold_1min")
 
 def setup_logging() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    write_readme()
     if logger.handlers:
         return
     logger.setLevel(logging.INFO)
@@ -530,7 +532,7 @@ def install_task() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Download Yahoo gold into GOLD_DATA/Yahoo_Finance."
+        description="Download Yahoo gold into MARKET_DATA/Yahoo_Finance_Gold."
     )
     parser.add_argument(
         "--days",

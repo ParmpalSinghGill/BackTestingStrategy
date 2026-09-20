@@ -21,11 +21,23 @@ const TF_SECONDS = {
   "1m": 60,
   "5m": 300,
   "15m": 900,
+  "30m": 1800,
   "1h": 3600,
   "4h": 14400,
   "1d": 86400,
   "1w": 604800,
 };
+
+const STEP_CHOICES = [
+  { id: "current", label: "Current candles" },
+  { id: "1m", label: "1m" },
+  { id: "5m", label: "5m" },
+  { id: "15m", label: "15m" },
+  { id: "30m", label: "30m" },
+  { id: "1h", label: "1h" },
+  { id: "4h", label: "4h" },
+  { id: "1d", label: "1D" },
+];
 
 const shell = document.getElementById("chart-shell");
 const chartElement = document.getElementById("chart");
@@ -150,6 +162,9 @@ let dailyCandles = [];
 let sourceIndex = 0;
 let replayTime = 0;
 let currentTimeframe = "1m";
+let replayStep = "current";
+let feedUnit = "XAU";
+let feedDailyName = "Gold_Daily.csv";
 let currentCandles = [];
 let currentVolumes = [];
 let playing = false;
@@ -167,6 +182,9 @@ let shiftHeld = false;
 let selectedDrawing = null;
 let dragState = null;
 let drawings = loadDrawings();
+let drawingUndo = [];
+let drawingRedo = [];
+const DRAWING_UNDO_LIMIT = 80;
 let lastUsedColor = DEFAULT_DRAWING_COLOR;
 let lastUsedOpacity = 1;
 let overlayWidth = 0;
@@ -296,6 +314,10 @@ function bucketStart(utcSec, tf) {
     const weekday = (day + 4) % 7;
     return (day - weekday) * 86400 - IST_OFFSET;
   }
+  // XAUUSDT / CoinDCX day = UTC calendar day = 05:30 IST → next 05:29 IST.
+  if (tf === "1d") {
+    return Math.floor(utcSec / 86400) * 86400;
+  }
   const size = TF_SECONDS[tf];
   return Math.floor(local / size) * size - IST_OFFSET;
 }
@@ -332,8 +354,83 @@ function firstIndexAtOrAfter(time) {
   return ans;
 }
 
-function usesDailyArchive(tf = currentTimeframe) {
-  return dailyCandles.length > 0 && (tf === "1d" || tf === "1w");
+function chartTfSeconds(tf = currentTimeframe) {
+  return TF_SECONDS[tf] || 60;
+}
+
+function effectiveStepTf() {
+  if (replayStep !== "current" && TF_SECONDS[replayStep] && TF_SECONDS[replayStep] <= chartTfSeconds()) {
+    return replayStep;
+  }
+  return currentTimeframe;
+}
+
+function inMinuteArchive() {
+  return sourceCandles.length > 0 && replayTime >= sourceCandles[0].time;
+}
+
+function formingFromMinutes() {
+  if (!inMinuteArchive()) return false;
+  if (currentTimeframe !== "1d" && currentTimeframe !== "1w") return true;
+  // 1D/1W "Current candles" keeps full Gold_Daily bars. A smaller step
+  // builds that same chart candle from 1-minute data as Play/Next add time.
+  return replayStep !== "current";
+}
+
+function usesDailyArchive() {
+  if (!dailyCandles.length || (currentTimeframe !== "1d" && currentTimeframe !== "1w")) return false;
+  return !formingFromMinutes();
+}
+
+function allowedStepIds(tf = currentTimeframe) {
+  const maxSec = chartTfSeconds(tf);
+  return STEP_CHOICES
+    .filter((choice) => choice.id === "current" || TF_SECONDS[choice.id] <= maxSec)
+    .map((choice) => choice.id);
+}
+
+function syncReplayStepSelect() {
+  const select = document.getElementById("replay-step");
+  if (!select) return;
+  const allowed = allowedStepIds();
+  if (replayStep !== "current" && !allowed.includes(replayStep)) {
+    replayStep = "current";
+  }
+  select.innerHTML = "";
+  for (const choice of STEP_CHOICES) {
+    if (!allowed.includes(choice.id)) continue;
+    const option = document.createElement("option");
+    option.value = choice.id;
+    option.textContent = choice.label;
+    select.appendChild(option);
+  }
+  select.value = replayStep;
+  updateNextButtonTitle();
+}
+
+function updateNextButtonTitle() {
+  const next = document.getElementById("next");
+  const play = document.getElementById("play");
+  const step = effectiveStepTf();
+  const stepLabel = replayStep === "current" ? `current ${currentTimeframe}` : step;
+  if (next) {
+    next.title = `Add the next ${stepLabel} of data. Current candles = one full ${currentTimeframe} bar. A smaller step builds that bar.`;
+  }
+  if (play) {
+    play.title = `Play — each tick adds ${stepLabel} (Space)`;
+  }
+}
+
+function setReplayStep(step, { render = true } = {}) {
+  const allowed = allowedStepIds();
+  replayStep = allowed.includes(step) ? step : "current";
+  const select = document.getElementById("replay-step");
+  if (select && select.value !== replayStep) select.value = replayStep;
+  updateNextButtonTitle();
+  saveReplayCursor();
+  if (render && (currentCandles.length || dailyCandles.length)) {
+    renderChart({ preserveRange: true });
+  }
 }
 
 function applyTimeframe(timeframe) {
@@ -341,6 +438,7 @@ function applyTimeframe(timeframe) {
   document.querySelectorAll(".tf").forEach((button) => {
     button.classList.toggle("active", button.dataset.tf === timeframe);
   });
+  syncReplayStepSelect();
 }
 
 function snapToReplayWindow() {
@@ -428,7 +526,23 @@ function resampleBars(bars, tf) {
   return seriesFromBars([...buckets.values()]);
 }
 
+function buildHybridHigherTf() {
+  const cut = bucketStart(sourceCandles[0].time, currentTimeframe);
+  const older = dailyCandles.filter((bar) => bar.time < cut && bar.time <= replayTime);
+  const fromDaily = currentTimeframe === "1w"
+    ? resampleBars(older, "1w")
+    : seriesFromBars(older);
+  const fromMinute = resample(visibleSource());
+  return {
+    candles: fromDaily.candles.concat(fromMinute.candles),
+    volumes: fromDaily.volumes.concat(fromMinute.volumes),
+  };
+}
+
 function buildVisibleSeries() {
+  if ((currentTimeframe === "1d" || currentTimeframe === "1w") && formingFromMinutes()) {
+    return buildHybridHigherTf();
+  }
   if (usesDailyArchive()) {
     const bars = visibleDaily();
     if (currentTimeframe === "1d") return seriesFromBars(bars);
@@ -444,6 +558,9 @@ function buildVisibleSeries() {
 }
 
 function isReplayEnded() {
+  if (formingFromMinutes()) {
+    return !sourceCandles.length || sourceIndex >= sourceCandles.length - 1;
+  }
   if (usesDailyArchive()) {
     if (!dailyCandles.length) return true;
     return replayTime >= dailyCandles[dailyCandles.length - 1].time;
@@ -557,6 +674,57 @@ function saveDrawings() {
   localStorage.setItem(DRAWING_STORAGE_KEY, JSON.stringify(drawings));
 }
 
+function cloneDrawings(list = drawings) {
+  return JSON.parse(JSON.stringify(list));
+}
+
+function pushUndoSnapshot(previous) {
+  const serialized = JSON.stringify(previous);
+  const last = drawingUndo[drawingUndo.length - 1];
+  if (last && JSON.stringify(last) === serialized) return;
+  drawingRedo = [];
+  drawingUndo.push(previous);
+  if (drawingUndo.length > DRAWING_UNDO_LIMIT) drawingUndo.shift();
+  syncUndoButtons();
+}
+
+function snapshotDrawings() {
+  pushUndoSnapshot(cloneDrawings());
+}
+
+function applyDrawingSnapshot(list) {
+  drawings = cloneDrawings(list);
+  if (selectedDrawing == null || selectedDrawing >= drawings.length) {
+    selectedDrawing = drawings.length ? drawings.length - 1 : null;
+  }
+  if (editingIndex != null) {
+    editingIndex = null;
+    if (textEditor) textEditor.hidden = true;
+  }
+  saveDrawings();
+  drawOverlay();
+  syncUndoButtons();
+}
+
+function undoDrawing() {
+  if (!drawingUndo.length) return;
+  drawingRedo.push(cloneDrawings());
+  applyDrawingSnapshot(drawingUndo.pop());
+}
+
+function redoDrawing() {
+  if (!drawingRedo.length) return;
+  drawingUndo.push(cloneDrawings());
+  applyDrawingSnapshot(drawingRedo.pop());
+}
+
+function syncUndoButtons() {
+  const undoBtn = document.getElementById("undo-drawing");
+  const redoBtn = document.getElementById("redo-drawing");
+  if (undoBtn) undoBtn.disabled = !drawingUndo.length;
+  if (redoBtn) redoBtn.disabled = !drawingRedo.length;
+}
+
 function loadReplayCursor() {
   try {
     const saved = JSON.parse(localStorage.getItem(REPLAY_STORAGE_KEY) || "null");
@@ -571,7 +739,7 @@ function saveReplayCursor() {
   if (!replayTime) return;
   localStorage.setItem(
     REPLAY_STORAGE_KEY,
-    JSON.stringify({ time: replayTime, timeframe: currentTimeframe })
+    JSON.stringify({ time: replayTime, timeframe: currentTimeframe, step: replayStep })
   );
 }
 
@@ -795,7 +963,7 @@ function updateEventHud(evt = null) {
   nextBtn.disabled = !next;
   const shown = evt || eventAtOrBeforeReplay();
   if (!list.length) {
-    hud.textContent = "No events in local gold data";
+    hud.textContent = "No events in local market data";
     return;
   }
   if (!shown) {
@@ -1092,10 +1260,13 @@ function openColorPopover() {
   }
 }
 
-function setSelectedColor(color, opacity) {
+function setSelectedColor(color, opacity, { history = true } = {}) {
   const drawing = selectedDrawing != null ? drawings[selectedDrawing] : null;
   if (!drawing) return;
   const hex = normalizeHex(color);
+  const nextOpacity = opacity != null ? opacity : drawingOpacity(drawing);
+  if (normalizeHex(drawingColor(drawing)) === hex && drawingOpacity(drawing) === nextOpacity) return;
+  if (history) snapshotDrawings();
   drawing.color = hex;
   lastUsedColor = hex;
   if (opacity != null) drawing.opacity = opacity;
@@ -1191,7 +1362,12 @@ function updateOhlc(bar) {
   }
 
   const tfEl = document.getElementById("legend-tf");
-  if (tfEl) tfEl.textContent = currentTimeframe.toUpperCase();
+  if (tfEl) {
+    const step = effectiveStepTf();
+    tfEl.textContent = replayStep === "current" || step === currentTimeframe
+      ? currentTimeframe.toUpperCase()
+      : `${currentTimeframe.toUpperCase()} · step ${step}`;
+  }
 
   const prevClose = previousBarClose(bar);
   const changeEl = document.getElementById("chg");
@@ -1493,7 +1669,7 @@ function jumpToTime(time) {
   setReplayTime(time);
 }
 
-function nextArchiveBar() {
+function nextArchiveBar(stepTf = effectiveStepTf()) {
   const opts = { preserveRange: !followHead };
   if (!dailyCandles.length) return;
   const idx = lastIndexAtOrBefore(replayTime, dailyCandles);
@@ -1501,7 +1677,9 @@ function nextArchiveBar() {
     setReplayTime(dailyCandles[0].time, opts);
     return;
   }
-  if (currentTimeframe === "1d") {
+  const stepSec = chartTfSeconds(stepTf);
+  // Daily files have no 1m/5m/1h prints. One Gold_Daily bar is the finest step.
+  if (stepTf === "1d" || currentTimeframe === "1d" || stepSec < 86400) {
     if (idx + 1 >= dailyCandles.length) {
       setReplayTime(dailyCandles[dailyCandles.length - 1].time, opts);
       return;
@@ -1533,17 +1711,7 @@ function nextArchiveBar() {
   setReplayTime(dailyCandles[end].time, opts);
 }
 
-function nextCandle() {
-  const opts = { preserveRange: !followHead };
-  if (usesDailyArchive()) {
-    if (isReplayEnded()) {
-      pauseReplay("End of data");
-      setLiveState("ended", "End of data");
-      return;
-    }
-    nextArchiveBar();
-    return;
-  }
+function advanceSourceByTf(tf, opts) {
   if (!sourceCandles.length || isReplayEnded()) {
     pauseReplay("End of data");
     setLiveState("ended", "End of data");
@@ -1553,15 +1721,15 @@ function nextCandle() {
     setReplayTime(sourceCandles[0].time, opts);
     return;
   }
-  if (currentTimeframe === "1m") {
+  if (tf === "1m") {
     setReplayIndex(sourceIndex + 1, opts);
     return;
   }
-  const currentBucket = bucketStart(sourceCandles[sourceIndex].time, currentTimeframe);
+  const currentBucket = bucketStart(sourceCandles[sourceIndex].time, tf);
   let index = sourceIndex + 1;
   while (
     index < sourceCandles.length &&
-    bucketStart(sourceCandles[index].time, currentTimeframe) === currentBucket
+    bucketStart(sourceCandles[index].time, tf) === currentBucket
   ) {
     index += 1;
   }
@@ -1569,19 +1737,85 @@ function nextCandle() {
     setReplayIndex(sourceCandles.length - 1, opts);
     return;
   }
-  const nextBucket = bucketStart(sourceCandles[index].time, currentTimeframe);
+  const nextBucket = bucketStart(sourceCandles[index].time, tf);
   let end = index;
   while (
     end + 1 < sourceCandles.length &&
-    bucketStart(sourceCandles[end + 1].time, currentTimeframe) === nextBucket
+    bucketStart(sourceCandles[end + 1].time, tf) === nextBucket
   ) {
     end += 1;
   }
   setReplayIndex(end, opts);
 }
 
+function advanceBySelectedStep(opts) {
+  const stepTf = effectiveStepTf();
+  if (replayStep === "current" || stepTf === currentTimeframe) {
+    advanceSourceByTf(currentTimeframe, opts);
+    return;
+  }
+  jumpBySeconds(chartTfSeconds(stepTf), opts);
+}
+
+function nextCandle() {
+  const opts = { preserveRange: !followHead };
+  const stepTf = effectiveStepTf();
+
+  if (formingFromMinutes()) {
+    advanceBySelectedStep(opts);
+    return;
+  }
+
+  if (usesDailyArchive()) {
+    if (isReplayEnded()) {
+      pauseReplay("End of data");
+      setLiveState("ended", "End of data");
+      return;
+    }
+    if (replayStep !== "current" && sourceCandles.length && replayTime < sourceCandles[0].time) {
+      const idx = lastIndexAtOrBefore(replayTime, dailyCandles);
+      const nextDaily = idx + 1 < dailyCandles.length ? dailyCandles[idx + 1] : null;
+      if (!nextDaily || nextDaily.time >= sourceCandles[0].time) {
+        setReplayTime(sourceCandles[0].time, opts);
+        return;
+      }
+    }
+    nextArchiveBar(stepTf);
+    return;
+  }
+
+  if (!sourceCandles.length || isReplayEnded()) {
+    pauseReplay("End of data");
+    setLiveState("ended", "End of data");
+    return;
+  }
+  if (sourceIndex < 0 || replayTime < sourceCandles[0].time) {
+    setReplayTime(sourceCandles[0].time, opts);
+    return;
+  }
+  advanceBySelectedStep(opts);
+}
+
 function jumpBySeconds(seconds) {
   const opts = { preserveRange: !followHead };
+  if (formingFromMinutes()) {
+    if (!sourceCandles.length) return;
+    if (sourceIndex < 0) {
+      setReplayTime(sourceCandles[0].time, opts);
+      return;
+    }
+    const target = sourceCandles[sourceIndex].time + seconds;
+    let index = lastIndexAtOrBefore(target);
+    if (index <= sourceIndex) {
+      index = firstIndexAtOrAfter(target);
+    }
+    if (index >= sourceCandles.length) {
+      setReplayIndex(sourceCandles.length - 1, opts);
+      return;
+    }
+    setReplayIndex(index, opts);
+    return;
+  }
   if (usesDailyArchive()) {
     if (seconds >= 86400) {
       const days = Math.max(1, Math.round(seconds / 86400));
@@ -1621,9 +1855,15 @@ function jumpNextDay() {
     setReplayTime(sourceCandles[0].time, opts);
     return;
   }
-  const current = istParts(sourceCandles[sourceIndex].time).date;
+  const sessionDay = currentTimeframe === "1d";
+  const current = sessionDay
+    ? utcSessionDate(sourceCandles[sourceIndex].time)
+    : istParts(sourceCandles[sourceIndex].time).date;
   for (let i = sourceIndex + 1; i < sourceCandles.length; i += 1) {
-    if (istParts(sourceCandles[i].time).date !== current) {
+    const day = sessionDay
+      ? utcSessionDate(sourceCandles[i].time)
+      : istParts(sourceCandles[i].time).date;
+    if (day !== current) {
       setReplayIndex(i, opts);
       return;
     }
@@ -1838,8 +2078,11 @@ function paperEquity() {
 
 function fillPaperInputs(state, { forceCapital = false, syncSettings = false } = {}) {
   const capital = paperField("paper-capital");
-  if (capital && (forceCapital || document.activeElement !== capital)) {
-    capital.value = String(state.setCapital ?? 10000);
+  if (capital) {
+    capital.disabled = paperPositions().length > 0;
+    if (forceCapital || document.activeElement !== capital) {
+      capital.value = String(state.setCapital ?? 10000);
+    }
   }
   if (syncSettings) {
     const map = [
@@ -1942,8 +2185,24 @@ function syncPaperLine() {
   syncEventMarkers();
 }
 
+function paperDisplayCash() {
+  const cash = Number(paperState?.cash ?? 0);
+  const typed = Number(paperField("paper-capital")?.value);
+  const setCap = Number(paperState?.setCapital ?? cash);
+  if (
+    !paperPositions().length &&
+    Number.isFinite(typed) &&
+    typed > 0 &&
+    Number.isFinite(setCap) &&
+    Math.abs(typed - setCap) > 0.009
+  ) {
+    return typed;
+  }
+  return Number.isFinite(cash) ? cash : typed;
+}
+
 function updateTicketPreview() {
-  const cash = Number(paperState?.cash ?? paperField("paper-capital")?.value ?? 0);
+  const cash = paperDisplayCash();
   const pct = Number(paperField("paper-size")?.value || 0);
   const lev = Math.max(1, Number(paperField("paper-leverage")?.value || 1));
   const slip = Number(paperField("paper-slip")?.value || 0) / 100;
@@ -1957,6 +2216,17 @@ function updateTicketPreview() {
   }
   const available = paperField("paper-available");
   if (available) available.textContent = Number.isFinite(cash) ? cash.toFixed(2) : "—";
+  const setCapEl = paperField("paper-setcap");
+  if (setCapEl) {
+    const setCap = Number(paperState?.setCapital);
+    setCapEl.textContent = Number.isFinite(setCap) ? setCap.toFixed(2) : "—";
+  }
+  const capitalNote = paperField("paper-capital-note");
+  if (capitalNote) {
+    capitalNote.textContent = paperPositions().length
+      ? "Close open trades first. Available is leftover cash, not Set capital."
+      : "Starting money. Save applies it to Available when you have no open trades. Actual capital above moves with P&L.";
+  }
   const actualEl = paperField("paper-actual");
   if (actualEl) {
     const { actual, pnl } = paperEquity();
@@ -1980,7 +2250,7 @@ function updateTicketPreview() {
   const liqEl = paperField("paper-liq");
   if (marginEl) marginEl.textContent = pct > 0 ? margin.toFixed(2) : "—";
   if (px == null || pct <= 0) {
-    if (qtyEl) qtyEl.textContent = "~0.000 XAU";
+    if (qtyEl) qtyEl.textContent = `~0.000 ${paperAssetUnit()}`;
     if (liqEl) liqEl.textContent = "—";
     return;
   }
@@ -1988,7 +2258,7 @@ function updateTicketPreview() {
   const chargeRate = taker * (1 + gst);
   const money = margin / (1 + lev * chargeRate);
   const qty = Math.floor((money * lev) / fill / 0.001) * 0.001;
-  if (qtyEl) qtyEl.textContent = `~${Math.max(0, qty).toFixed(3)} XAU`;
+  if (qtyEl) qtyEl.textContent = `~${Math.max(0, qty).toFixed(3)} ${paperAssetUnit()}`;
   if (liqEl) {
     const liq = short ? fill * (1 + 1 / lev) : fill * (1 - 1 / lev);
     liqEl.textContent = lev > 1 ? liq.toFixed(2) : "—";
@@ -2017,27 +2287,114 @@ function updateTicketButtons() {
   }
 }
 
+function paperQtyStep(qty) {
+  const stepped = Math.floor((Number(qty) + 1e-9) / 0.001) * 0.001;
+  return Math.max(0, Number(stepped.toFixed(3)));
+}
+
+function bindPaperPartial(box) {
+  box.querySelectorAll(".paper-book-row").forEach((row) => {
+    const id = Number(row.dataset.id);
+    const pos = paperById(id);
+    if (!pos) return;
+    const remain = paperRemainQty(pos);
+    const input = row.querySelector(".paper-partial-qty");
+    row.querySelectorAll("[data-pct]").forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const pct = Number(btn.dataset.pct);
+        const qty = paperQtyStep(remain * (pct / 100));
+        if (input) input.value = qty.toFixed(3);
+      });
+    });
+    row.querySelector("[data-exit]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      const typed = Number(input?.value);
+      const qty = Number.isFinite(typed) && typed > 0 ? Math.min(remain, typed) : remain;
+      paperClose(id, qty);
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const typed = Number(input.value);
+      const qty = Number.isFinite(typed) && typed > 0 ? Math.min(remain, typed) : remain;
+      paperClose(id, qty);
+    });
+  });
+}
+
+function renderPaperHeld() {
+  const el = paperField("paper-held");
+  if (!el) return;
+  const rows = paperPositions();
+  const now = replayFillPrice();
+  if (!rows.length) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = rows.map((pos) => {
+    const remain = paperRemainQty(pos);
+    const bought = paperBoughtQty(pos);
+    const markVal = now != null ? remain * now : null;
+    const leftover = bought > remain + 1e-9
+      ? ` · after partial ${remain.toFixed(3)} left`
+      : "";
+    return `<div>Bought ${bought.toFixed(3)} ${paperAssetUnit()} · Remain ${remain.toFixed(3)} ${paperAssetUnit()}`
+      + (markVal != null ? ` · Now ${markVal.toFixed(2)}` : "")
+      + leftover
+      + ` @ ${now != null ? now.toFixed(2) : Number(pos.entryFill).toFixed(2)}</div>`;
+  }).join("");
+}
+
 function renderPaperBooks() {
   const box = paperField("paper-books");
   if (!box) return;
   const rows = paperPositions();
   const now = replayFillPrice();
+  renderPaperHeld();
   if (!rows.length) {
     box.hidden = true;
     box.innerHTML = "";
     return;
   }
+  const active = document.activeElement;
+  const keep = active && box.contains(active) && active.classList.contains("paper-partial-qty")
+    ? { id: active.closest("[data-id]")?.dataset.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
+    : null;
   box.hidden = false;
   box.innerHTML = rows.map((pos) => {
     const short = isPaperShort(pos);
+    const remain = paperRemainQty(pos);
+    const bought = paperBoughtQty(pos);
     const pnl = now != null ? paperNetPnl(pos, now, "market") : 0;
     const cls = pnl > 0 ? "up" : pnl < 0 ? "down" : "";
-    return `<div class="paper-book-row ${short ? "short" : "long"}">
+    const markVal = now != null ? remain * now : null;
+    return `<div class="paper-book-row ${short ? "short" : "long"}" data-id="${pos.id}">
       <span>${short ? "SHORT" : "LONG"}</span>
-      <span>${Number(pos.quantity).toFixed(3)} @ ${Number(pos.entryFill).toFixed(2)}</span>
+      <span>Bought ${bought.toFixed(3)} · Remain ${remain.toFixed(3)} @ ${Number(pos.entryFill).toFixed(2)}</span>
       <b class="${cls}">${fmtPnl(pnl)}</b>
+      <div class="paper-book-value">${markVal != null ? `Remain now ${markVal.toFixed(2)} @ ${now.toFixed(2)}` : ""}</div>
+      <div class="paper-partial">
+        <input class="paper-partial-qty" type="number" min="0.001" step="0.001" max="${remain}" value="${remain.toFixed(3)}" title="Quantity to exit">
+        <button type="button" data-pct="25">25%</button>
+        <button type="button" data-pct="50">50%</button>
+        <button type="button" data-pct="75">75%</button>
+        <button type="button" data-pct="100">100%</button>
+        <button type="button" data-exit="1">Exit qty</button>
+      </div>
     </div>`;
   }).join("");
+  bindPaperPartial(box);
+  if (keep?.id) {
+    const input = box.querySelector(`.paper-book-row[data-id="${keep.id}"] .paper-partial-qty`);
+    if (input) {
+      input.value = keep.value;
+      input.focus();
+      try { input.setSelectionRange(keep.start, keep.end); } catch { /* ignore */ }
+    }
+  }
 }
 
 function updatePositionStatus() {
@@ -2060,7 +2417,17 @@ function updatePositionStatus() {
     wrap.classList.add(shorts && !longs ? "is-short" : "is-long");
     mark.textContent = rows.length > 1 ? String(rows.length) : (shorts ? "▼" : "▲");
     title.textContent = rows.length > 1 ? `${rows.length} OPEN` : (shorts ? "IN SHORT" : "IN LONG");
-    sub.textContent = `${longs} long · ${shorts} short · ${fmtPnl(pnl)}`;
+    if (rows.length === 1) {
+      const pos = rows[0];
+      const remain = paperRemainQty(pos);
+      const bought = paperBoughtQty(pos);
+      const markVal = now != null ? remain * now : null;
+      sub.textContent = `Bought ${bought.toFixed(3)} · Remain ${remain.toFixed(3)}`
+        + (markVal != null ? ` · Now ${markVal.toFixed(2)}` : "")
+        + ` · ${fmtPnl(pnl)}`;
+    } else {
+      sub.textContent = `${longs} long · ${shorts} short · ${fmtPnl(pnl)}`;
+    }
     return;
   }
   wrap.classList.add("is-flat");
@@ -2068,7 +2435,7 @@ function updatePositionStatus() {
     mark.textContent = "X";
     title.textContent = `EXITED ${last.side}`;
     sub.textContent =
-      `${Number(last.quantity).toFixed(3)} XAU @ ${Number(last.exitFill).toFixed(2)} · ${fmtPnl(Number(last.pnl))} · ${last.reason || "CLOSE"}`;
+      `${Number(last.quantity).toFixed(3)} ${paperAssetUnit()} @ ${Number(last.exitFill).toFixed(2)} · ${fmtPnl(Number(last.pnl))} · ${last.reason || "CLOSE"}`;
     return;
   }
   mark.textContent = "○";
@@ -2102,7 +2469,13 @@ function updatePaperHud() {
     hud.textContent =
       `Actual ${actual.toFixed(2)} · ${fmtPnl(pnl)} · ${rows.length} open · avail ${cash.toFixed(2)}`;
   }
-  hud.title = `${state.tradesFile || ""} | ${state.transactionsFile || ""}`;
+  hud.title = `${state.tradesFile || ""} | ${state.transactionsFile || ""} | ${state.dailyFile || ""}`;
+  const txnPath = paperField("paper-file-txn");
+  const tradePath = paperField("paper-file-trades");
+  const dailyPath = paperField("paper-file-daily");
+  if (txnPath) txnPath.textContent = state.transactionsFile || "";
+  if (tradePath) tradePath.textContent = state.tradesFile || "";
+  if (dailyPath) dailyPath.textContent = state.dailyFile || "";
   idlePaperPlaceHint();
   syncPaperLine();
 }
@@ -2134,7 +2507,7 @@ async function paperPost(body) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Paper request failed");
   applyPaperState(payload, {
-    forceCapital: body.action === "set_capital",
+    forceCapital: body.action === "set_capital" || body.capital != null,
     syncSettings: body.action === "settings" || body.action === "set_capital",
   });
   return payload;
@@ -2162,10 +2535,12 @@ async function paperSubmit() {
   }
 }
 
-async function paperClose(id) {
+async function paperClose(id, qty) {
   try {
     const body = { action: id == null ? "close_all" : "close", ...paperMark() };
     if (id != null) body.id = id;
+    const closeQty = Number(qty);
+    if (id != null && Number.isFinite(closeQty) && closeQty > 0) body.qty = closeQty;
     await paperPost(body);
   } catch (error) {
     window.alert(error.message);
@@ -2182,7 +2557,7 @@ async function paperReverse(id) {
 
 async function paperSaveBook() {
   const btn = paperField("paper-book-save");
-  const capital = Number(paperField("paper-capital").value);
+  const capital = Number(paperField("paper-capital")?.value);
   try {
     const body = {
       action: "settings",
@@ -2192,10 +2567,12 @@ async function paperSaveBook() {
     };
     const sizePct = Number(paperField("paper-size").value);
     if (Number.isFinite(sizePct) && sizePct > 0) body.sizePct = sizePct;
-    await paperPost(body);
-    const saved = Number(paperState?.setCapital);
-    if (Number.isFinite(capital) && capital > 0 && Math.abs(capital - saved) > 0.009) {
-      await paperPost({ action: "set_capital", capital });
+    if (Number.isFinite(capital) && capital > 0) body.capital = capital;
+    if (replayTime) body.time = replayTime;
+    body.timeframe = currentTimeframe;
+    const payload = await paperPost(body);
+    if (payload?.capitalIgnored) {
+      window.alert("Close all open trades before changing capital. Available is leftover cash while a trade is open.");
     }
     if (btn) {
       btn.textContent = "Saved";
@@ -2213,19 +2590,61 @@ function schedulePaperStops(id) {
   paperStopsTimer = setTimeout(() => savePositionStops(id), 250);
 }
 
+function paperAssetUnit() {
+  return feedUnit || "XAU";
+}
+
+function paperRemainQty(pos) {
+  return Number(pos?.quantity || 0);
+}
+
+function paperBoughtQty(pos) {
+  const remain = paperRemainQty(pos);
+  const bought = Number(pos?.originalQuantity);
+  return Number.isFinite(bought) && bought > 0 ? bought : remain;
+}
+
+function clampPaperStopPrice(kind, price, pos) {
+  const mark = replayFillPrice();
+  if (mark == null || !Number.isFinite(price)) return price;
+  const tick = mark > 500 ? 0.1 : 0.01;
+  const short = isPaperShort(pos);
+  if (kind === "sl") {
+    return short ? Math.max(price, mark + tick) : Math.min(price, mark - tick);
+  }
+  if (kind === "tp") {
+    return short ? Math.min(price, mark - tick) : Math.max(price, mark + tick);
+  }
+  return price;
+}
+
+function stopArmedAt(pos, kind) {
+  const raw = Number(kind === "sl" ? pos?.slArmedAt : pos?.tpArmedAt);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return Number(pos?.entryTime) || 0;
+}
+
+function paperStopPad(price) {
+  const px = Number(price);
+  if (!Number.isFinite(px) || px <= 0) return 8;
+  return Math.max(px * 0.004, px > 500 ? 8 : 0.05);
+}
+
 function suggestedPaperLevels(pos) {
   const ref = Number(pos?.entryFill ?? paperRefPrice());
   if (!Number.isFinite(ref) || ref <= 0) return { tp: null, sl: null };
-  const pad = Math.max(8, ref * 0.004);
   const now = replayFillPrice();
   const short = isPaperShort(pos);
-  const tp = short ? ref - pad : ref + pad;
-  let sl = short ? ref + pad : ref - pad;
-  if (now != null && Number.isFinite(now)) {
-    if (!short && now > ref) sl = (ref + now) / 2;
-    if (short && now < ref) sl = (ref + now) / 2;
+  const px = now != null && Number.isFinite(now) ? now : ref;
+  const pad = paperStopPad(px);
+  if (short) {
+    let sl = px + pad;
+    if (now != null && now < ref) sl = Math.max(sl, (ref + now) / 2);
+    return { tp: px - pad, sl };
   }
-  return { tp, sl };
+  let sl = px - pad;
+  if (now != null && now > ref) sl = Math.min(sl, (ref + now) / 2);
+  return { tp: px + pad, sl };
 }
 
 function clearPaperLevel(kind, id) {
@@ -2248,7 +2667,7 @@ function setPaperLevel(kind, price, id, persist = true) {
   if (id == null || !Number.isFinite(Number(price)) || Number(price) <= 0) return;
   const pos = paperById(id);
   if (!pos) return;
-  pos[kind] = Number(Number(price).toFixed(2));
+  pos[kind] = Number(clampPaperStopPrice(kind, Number(price), pos).toFixed(2));
   syncPaperLine();
   if (persist) savePositionStops(id);
 }
@@ -2263,6 +2682,7 @@ async function savePositionStops(id) {
       tp: pos.tp ?? "",
       sl: pos.sl ?? "",
       price: replayFillPrice(),
+      time: replayTime,
     });
   } catch (error) {
     window.alert(error.message);
@@ -2375,7 +2795,11 @@ function drawPaperTags() {
     const reverseW = 28;
     const tpW = 36;
     const slW = 36;
-    const qtyText = Number(pos.quantity).toFixed(3);
+    const remain = paperRemainQty(pos);
+    const bought = paperBoughtQty(pos);
+    const qtyText = bought - remain > 1e-9
+      ? `${remain.toFixed(3)}/${bought.toFixed(3)}`
+      : remain.toFixed(3);
     const sideText = short ? "Short" : "Long";
     const pnlText = fmtPnl(nowPnl);
     const qtyW = Math.ceil(ctx.measureText(qtyText).width) + 16;
@@ -2454,31 +2878,45 @@ function canPlacePaperStops() {
   return false;
 }
 
+function paperStopSourceBars() {
+  if (sourceIndex >= 0 && sourceCandles.length) {
+    return sourceCandles.slice(0, sourceIndex + 1);
+  }
+  return currentCandles;
+}
+
+function paperStopTouched(pos, bar) {
+  const { tp, sl } = currentPaperLevels(pos);
+  const short = isPaperShort(pos);
+  const entry = Number(pos.entryTime) || 0;
+  if (bar.time <= entry) return false;
+  if (short) {
+    if (sl != null && bar.time > stopArmedAt(pos, "sl") && bar.high >= sl) return true;
+    if (tp != null && bar.time > stopArmedAt(pos, "tp") && bar.low <= tp) return true;
+    return false;
+  }
+  if (sl != null && bar.time > stopArmedAt(pos, "sl") && bar.low <= sl) return true;
+  if (tp != null && bar.time > stopArmedAt(pos, "tp") && bar.high >= tp) return true;
+  return false;
+}
+
 async function checkPaperStops() {
+  if (paperStopDrag || paperChecking) return;
   const rows = paperPositions();
-  if (!rows.length || paperChecking) return;
+  if (!rows.length) return;
   const needs = rows.some((pos) => {
     const { tp, sl } = currentPaperLevels(pos);
     return tp != null || sl != null;
   });
   if (!needs) return;
-  const entry = Math.min(...rows.map((pos) => Number(pos.entryTime) || 0));
-  const bars = currentCandles.filter((bar) => bar.time > entry);
-  const hit = rows.some((pos) => {
-    const { tp, sl } = currentPaperLevels(pos);
-    const short = isPaperShort(pos);
-    return bars.some((bar) => (
-      bar.time > Number(pos.entryTime)
-      && (short
-        ? (sl != null && bar.high >= sl) || (tp != null && bar.low <= tp)
-        : (sl != null && bar.low <= sl) || (tp != null && bar.high >= tp))
-    ));
-  });
-  if (!hit) return;
+  const source = paperStopSourceBars();
+  const bars = source.filter((bar) => rows.some((pos) => paperStopTouched(pos, bar)));
+  if (!bars.length) return;
   paperChecking = true;
   try {
     await paperPost({
       action: "check",
+      time: replayTime,
       bars: bars.map((bar) => ({
         time: bar.time,
         high: bar.high,
@@ -2513,18 +2951,24 @@ function applyFeedMeta(payload) {
   const name = payload.name || payload.feed || "Gold";
   const symbol = payload.symbol || "";
   const note = payload.note || "";
+  feedUnit = payload.unit || (String(symbol).includes("XAG") ? "XAG" : "XAU");
+  feedDailyName = payload.dailyName || (feedUnit === "XAG" ? "Silver_Daily.csv" : "Gold_Daily.csv");
   const nameEl = document.getElementById("symbol-name");
   const codeEl = document.getElementById("symbol-code");
   const noteEl = document.getElementById("source-note");
+  const iconEl = document.getElementById("symbol-icon");
+  const loadingEl = document.getElementById("loading");
   if (nameEl) nameEl.textContent = name;
+  if (iconEl) iconEl.textContent = payload.icon || (feedUnit === "XAG" ? "AG" : "AU");
   if (codeEl) {
     codeEl.textContent = symbol
-      ? `${symbol} · GOLD_DATA/${payload.feed || ""} · replay`
+      ? `${symbol} · MARKET_DATA/${payload.feed || ""} · replay`
       : "Local 1-minute + daily archive · replay";
   }
   if (noteEl) {
-    noteEl.textContent = note || "1D/1W use Gold_Daily.csv · 1m/intraday use month files · no download";
+    noteEl.textContent = note || `1D/1W use ${feedDailyName} · 1m/intraday use month files · no download`;
   }
+  if (loadingEl) loadingEl.textContent = `Loading local ${name} candles…`;
   document.title = `${name} Replay Chart`;
   fillFeedSelect(payload);
 }
@@ -2542,13 +2986,18 @@ async function applySourcePayload(payload) {
   const saved = loadReplayCursor();
   if (saved?.timeframe && TF_SECONDS[saved.timeframe]) {
     applyTimeframe(saved.timeframe);
+  } else {
+    syncReplayStepSelect();
+  }
+  if (typeof saved?.step === "string") {
+    setReplayStep(saved.step, { render: false });
   }
   const start = istParts(dataStartTime());
   const end = istParts(dataEndTime());
   document.getElementById("jump-date").min = start.date;
   document.getElementById("jump-date").max = end.date;
   document.getElementById("status-right").textContent =
-    `${payload.timezone} · GOLD_DATA/${payload.feed || ""} · ${payload.files.join(", ")}`;
+    `${payload.timezone} · MARKET_DATA/${payload.feed || ""} · ${payload.files.join(", ")}`;
   if (saved?.time) {
     setReplayTime(saved.time);
     snapToReplayWindow();
@@ -2581,7 +3030,7 @@ async function loadSource() {
   try {
     const response = await fetch("/api/source");
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Could not load gold data");
+    if (!response.ok) throw new Error(payload.error || "Could not load market data");
     await applySourcePayload(payload);
   } catch (error) {
     errorBox.textContent = error.message;
@@ -2602,7 +3051,7 @@ async function switchDataFeed(feedId) {
       body: JSON.stringify({ id: feedId }),
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Could not switch gold data");
+    if (!response.ok) throw new Error(payload.error || "Could not switch data feed");
     pauseReplay();
     setEventsEnabled(false);
     await applySourcePayload(payload);
@@ -3042,14 +3491,35 @@ function finishTextEdit({ cancel = false } = {}) {
   textEditor.hidden = true;
 
   const drawing = drawings[index];
-  if (drawing) {
-    // Typing edits the drawing live, so cancelling has to put the old text back.
-    drawing.text = cancel ? editOriginalText : textEditor.value.trim();
-    // An empty text note would be invisible and unselectable, so drop it.
-    if (drawing.type === "text" && !drawing.text) {
-      drawings.splice(index, 1);
-      selectedDrawing = null;
-    }
+  if (!drawing) {
+    saveDrawings();
+    drawOverlay();
+    return;
+  }
+
+  const nextText = cancel ? editOriginalText : textEditor.value.trim();
+  const willDelete = drawing.type === "text" && !nextText;
+  if (cancel && willDelete && !editOriginalText) {
+    drawings.splice(index, 1);
+    selectedDrawing = null;
+    if (drawingUndo.length) drawingUndo.pop();
+    syncUndoButtons();
+    saveDrawings();
+    drawOverlay();
+    return;
+  }
+
+  const changed = (drawing.text || "") !== (editOriginalText || "") || willDelete;
+  if (!cancel && changed) {
+    const prev = cloneDrawings();
+    if (prev[index]) prev[index].text = editOriginalText;
+    pushUndoSnapshot(prev);
+  }
+
+  drawing.text = nextText;
+  if (willDelete) {
+    drawings.splice(index, 1);
+    selectedDrawing = null;
   }
   saveDrawings();
   drawOverlay();
@@ -3061,6 +3531,7 @@ function deleteSelectedDrawing() {
     editingIndex = null;
     textEditor.hidden = true;
   }
+  snapshotDrawings();
   drawings.splice(selectedDrawing, 1);
   selectedDrawing = null;
   saveDrawings();
@@ -3068,6 +3539,8 @@ function deleteSelectedDrawing() {
 }
 
 function deleteAllDrawings() {
+  if (!drawings.length) return;
+  snapshotDrawings();
   drawings = [];
   pendingPoint = null;
   pointerPreview = null;
@@ -3542,6 +4015,7 @@ function hitDrawing(clientX, clientY) {
 function eraseAt(clientX, clientY) {
   const hit = hitDrawing(clientX, clientY);
   if (hit) {
+    snapshotDrawings();
     drawings.splice(hit.index, 1);
     selectedDrawing = null;
     saveDrawings();
@@ -3563,6 +4037,7 @@ function commitDrawing(drawing) {
 
   if (!drawing.color) drawing.color = lastUsedColor;
   if (drawing.opacity == null) drawing.opacity = lastUsedOpacity;
+  snapshotDrawings();
   drawings.push(drawing);
   selectedDrawing = drawings.length - 1;
   pendingPoint = null;
@@ -3623,8 +4098,8 @@ function refreshDraft(shiftKey) {
 function toolHelpText(stage) {
   const help = {
     cursor: followHead
-      ? "Pan/zoom · drag drawings or handles to move"
-      : "Follow off · drag to pan time and price · Shift+wheel zooms price",
+      ? "Pan/zoom · drag drawings · Ctrl+Z undo · Ctrl+Y redo"
+      : "Follow off · drag to pan · Ctrl+Z undo drawing · Shift+wheel zooms price",
     trend: stage === "second"
       ? "Trendline: release or click the second point · hold Shift for straight"
       : "Trendline: drag from one point to the other · hold Shift for straight",
@@ -4042,6 +4517,13 @@ function finishDrag(event) {
   if (!dragState || event.pointerId !== dragState.pointerId) return;
   event.preventDefault();
   event.stopPropagation();
+  const moved = drawings[dragState.index];
+  const original = dragState.original;
+  if (moved && original && JSON.stringify(moved) !== JSON.stringify(original)) {
+    const prev = cloneDrawings();
+    prev[dragState.index] = original;
+    pushUndoSnapshot(prev);
+  }
   saveDrawings();
   if (shell.hasPointerCapture(event.pointerId)) {
     shell.releasePointerCapture(event.pointerId);
@@ -4111,8 +4593,11 @@ colorToggle.addEventListener("click", (event) => {
 colorPopover.addEventListener("pointerdown", (event) => event.stopPropagation());
 colorInput.addEventListener("input", (event) => setSelectedColor(event.target.value));
 colorInput.addEventListener("change", (event) => setSelectedColor(event.target.value));
+colorOpacity.addEventListener("pointerdown", () => {
+  if (selectedDrawing != null) snapshotDrawings();
+});
 colorOpacity.addEventListener("input", (event) => {
-  setSelectedColor(colorInput.value, Number(event.target.value) / 100);
+  setSelectedColor(colorInput.value, Number(event.target.value) / 100, { history: false });
 });
 document.addEventListener("pointerdown", (event) => {
   if (!colorPopover.hidden && !selectionToolbar.contains(event.target)) {
@@ -4169,6 +4654,10 @@ document.getElementById("jump-time").addEventListener("keydown", (event) => {
   if (event.key === "Enter") goToEnteredTime();
 });
 playButton.addEventListener("click", togglePlay);
+document.getElementById("replay-step").addEventListener("change", (event) => {
+  setReplayStep(event.target.value);
+});
+syncReplayStepSelect();
 document.getElementById("next").addEventListener("click", () => {
   pauseReplay();
   nextCandle();
@@ -4316,6 +4805,17 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (typing) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (event.shiftKey) redoDrawing();
+    else undoDrawing();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    redoDrawing();
+    return;
+  }
   if (event.key.toLowerCase() === "t") setTool("trend");
   if (event.key.toLowerCase() === "h") setTool("horizontal");
   if (event.key.toLowerCase() === "r") setTool("ray");
@@ -4343,6 +4843,9 @@ window.addEventListener("keyup", (event) => {
   if (event.key === "Shift") refreshShiftConstraint(event);
 });
 
+document.getElementById("undo-drawing")?.addEventListener("click", undoDrawing);
+document.getElementById("redo-drawing")?.addEventListener("click", redoDrawing);
+syncUndoButtons();
 setFollowHead(followHead, { snap: false });
 syncEventLabelControls();
 document.getElementById("data-feed").addEventListener("change", (event) => {

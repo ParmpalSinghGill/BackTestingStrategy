@@ -1,16 +1,18 @@
-"""Download Vantage spot gold (VANTAGE:XAUUSD) into MARKET_DATA/TradingView_Vantage_Gold.
+"""Download Vantage spot silver (VANTAGE:XAGUSD) into MARKET_DATA/TradingView_Vantage_Silver.
 
-Yahoo COMEX futures stay in MARKET_DATA/Yahoo_Finance_Gold.
-This script never writes to that folder.
+Gold lives in sibling MARKET_DATA folders. This script never writes there.
 
 Usage:
-    python src/data_fetchers/fetch_vantage_gold.py
+    python src/data_fetchers/fetch_vantage_silver.py
+    python src/data_fetchers/fetch_vantage_silver.py --deep
 
-The 6-hour hidden job (run_fetch_gold_1m.vbs) runs Yahoo first, then this script.
+--deep fills Dukascopy 1m/daily from 2015 (as far as that feed goes).
+The 6-hour job runs without --deep and only catches up from the last stored bar.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -26,19 +28,20 @@ import pandas as pd
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from market_paths import TRADINGVIEW_VANTAGE_GOLD as OUTPUT_DIR, write_readme
+from market_paths import TRADINGVIEW_VANTAGE_SILVER as OUTPUT_DIR, write_readme
 DISPLAY_TZ = "Asia/Kolkata"
 EXCHANGE = "VANTAGE"
-SYMBOL = "XAUUSD"
+SYMBOL = "XAGUSD"
 TV_SYMBOL = f"{EXCHANGE}:{SYMBOL}"
 MAX_BARS = 5000
 BACKFILL_DAYS = 32
+HISTORY_START = datetime(2015, 1, 1, tzinfo=timezone.utc)
 DUKA_CHUNK_DAYS = 4
 DUKA_SLEEP_SEC = 1.2
-LOCK_MAX_AGE_SEC = 2 * 60 * 60
+LOCK_MAX_AGE_SEC = 6 * 60 * 60
 COLUMNS = ["Datetime", "Open", "High", "Low", "Close", "Volume"]
 DAILY_COLUMNS = ["Date", "Open", "High", "Low", "Close", "Volume"]
-DAILY_FILE = OUTPUT_DIR / "Gold_Daily.csv"
+DAILY_FILE = OUTPUT_DIR / "Silver_Daily.csv"
 SOURCE_FILE = OUTPUT_DIR / "SOURCE.txt"
 MONTH_NAMES = (
     "January",
@@ -56,20 +59,20 @@ MONTH_NAMES = (
 )
 MONTH_INDEX = {name: i for i, name in enumerate(MONTH_NAMES, start=1)}
 
-SOURCE_TEXT = """Source: Vantage XAUUSD (VANTAGE:XAUUSD) plus Dukascopy XAUUSD 1m backfill
-What: Vantage / TradingView spot gold vs USD
+SOURCE_TEXT = """Source: Vantage XAGUSD (VANTAGE:XAGUSD) plus Dukascopy XAGUSD 1m backfill
+What: Vantage / TradingView spot silver vs USD
 
 TradingView's free 1-minute feed only keeps about 5 days. Extra 1-minute
-history (to cover at least one month) is filled from Dukascopy XAUUSD,
-the same spot gold market. Overlapping recent bars keep the Vantage print.
+history is filled from Dukascopy XAGUSD (spot silver, from 2015). Overlapping
+recent bars keep the Vantage print. The 6-hour job appends new bars going forward.
 
-Sibling folder: MARKET_DATA/Yahoo_Finance_Gold (Yahoo COMEX GC=F futures)
+Gold sibling: MARKET_DATA/TradingView_Vantage_Gold (Vantage XAUUSD)
 
 1-minute files: month-wise IST +05:30.
-Daily file: Gold_Daily.csv (Vantage daily bars from 2018).
+Daily file: Silver_Daily.csv (Vantage daily plus older Dukascopy days).
 """
 
-logger = logging.getLogger("fetch_vantage_gold")
+logger = logging.getLogger("fetch_vantage_silver")
 
 
 def setup_logging() -> None:
@@ -79,7 +82,7 @@ def setup_logging() -> None:
         return
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s %(message)s")
-    file_handler = logging.FileHandler(OUTPUT_DIR / "fetch_vantage_gold.log", encoding="utf-8")
+    file_handler = logging.FileHandler(OUTPUT_DIR / "fetch_vantage_silver.log", encoding="utf-8")
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
@@ -213,13 +216,50 @@ def last_stored_timestamp() -> pd.Timestamp | None:
     return frame["Datetime"].max()
 
 
+def first_stored_timestamp() -> pd.Timestamp | None:
+    files = list_month_files()
+    if not files:
+        return None
+    earliest = min(files, key=lambda p: parse_month_file(p) or (9999, 99))
+    frame = read_month_csv(earliest)
+    if frame.empty:
+        return None
+    return frame["Datetime"].min()
+
+
+def last_contiguous_timestamp() -> pd.Timestamp | None:
+    """Latest bar in the unbroken month sequence starting at HISTORY_START."""
+    by_month: dict[tuple[int, int], Path] = {}
+    for path in list_month_files():
+        parsed = parse_month_file(path)
+        if parsed is not None:
+            by_month[parsed] = path
+    year, month = HISTORY_START.year, HISTORY_START.month
+    last_ts = None
+    now = datetime.now(timezone.utc)
+    while True:
+        path = by_month.get((year, month))
+        if path is None:
+            return last_ts
+        frame = read_month_csv(path)
+        if frame.empty:
+            return last_ts
+        last_ts = frame["Datetime"].max()
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+        if datetime(year, month, 1, tzinfo=timezone.utc) > now:
+            return last_ts
+
+
 def acquire_lock() -> Path | None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    lock_path = OUTPUT_DIR / ".fetch_vantage_gold.lock"
+    lock_path = OUTPUT_DIR / ".fetch_vantage_silver.lock"
     if lock_path.exists():
         age = time.time() - lock_path.stat().st_mtime
         if age < LOCK_MAX_AGE_SEC:
-            logger.info("Another Vantage gold fetch is already running; skipping.")
+            logger.info("Another Vantage silver fetch is already running; skipping.")
             return None
         lock_path.unlink(missing_ok=True)
     lock_path.write_text(str(os.getpid()), encoding="utf-8")
@@ -325,10 +365,60 @@ def fetch_tv_1m_paged() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def fetch_dukascopy_1m(days: int | None = None) -> pd.DataFrame:
-    """Spot XAUUSD 1m from Dukascopy in small chunks (TV free 1m is only ~5 days)."""
+def _dukascopy_chunk(interval, start, end):
     import dukascopy_python
-    from dukascopy_python.instruments import INSTRUMENT_FX_METALS_XAU_USD
+    from dukascopy_python.instruments import INSTRUMENT_FX_METALS_XAG_USD
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            got = dukascopy_python.fetch(
+                INSTRUMENT_FX_METALS_XAG_USD,
+                interval,
+                dukascopy_python.OFFER_SIDE_BID,
+                start,
+                end,
+                max_retries=3,
+            )
+            return got
+        except Exception as exc:
+            last_error = exc
+            logger.warning("    dukascopy attempt %s failed: %s", attempt, exc)
+            time.sleep(2 * attempt)
+    logger.info("    no bars in this chunk (%s)", last_error)
+    return None
+
+
+def store_dukascopy_1m_range(start: datetime, end: datetime) -> int:
+    """Write 1m month files chunk by chunk so a long backfill can resume."""
+    import dukascopy_python
+
+    if start >= end:
+        logger.info("  Dukascopy 1m range already covered")
+        return 0
+    logger.info("  Dukascopy XAGUSD 1m history %s -> %s", start.date(), end.date())
+    chunk_start = start
+    chunks = 0
+    while chunk_start < end:
+        chunk_end = min(chunk_start + timedelta(days=DUKA_CHUNK_DAYS), end)
+        chunks += 1
+        logger.info("    chunk %s  %s -> %s", chunks, chunk_start, chunk_end)
+        got = _dukascopy_chunk(dukascopy_python.INTERVAL_MIN_1, chunk_start, chunk_end)
+        if got is not None and not got.empty:
+            part = got.reset_index()
+            if "timestamp" in part.columns:
+                part = part.rename(columns={"timestamp": "datetime"})
+            save_by_month(normalize_1m(part))
+            logger.info("    stored %s bars", f"{len(part):,}")
+        chunk_start = chunk_end
+        if chunk_start < end:
+            time.sleep(DUKA_SLEEP_SEC)
+    return 0
+
+
+def fetch_dukascopy_1m(days: int | None = None) -> pd.DataFrame:
+    """Spot XAGUSD 1m from Dukascopy in small chunks (TV free 1m is only ~5 days)."""
+    import dukascopy_python
 
     end = datetime.now(timezone.utc)
     last = last_stored_timestamp()
@@ -351,29 +441,13 @@ def fetch_dukascopy_1m(days: int | None = None) -> pd.DataFrame:
         return pd.DataFrame()
     frames: list[pd.DataFrame] = []
     chunk_start = start
-    logger.info("  Dukascopy XAUUSD 1m %s  %s -> %s", reason, start.date(), end.date())
+    logger.info("  Dukascopy XAGUSD 1m %s  %s -> %s", reason, start.date(), end.date())
     while chunk_start < end:
         chunk_end = min(chunk_start + timedelta(days=DUKA_CHUNK_DAYS), end)
         logger.info("    chunk %s -> %s", chunk_start, chunk_end)
-        last_error = None
-        got = None
-        for attempt in range(1, 4):
-            try:
-                got = dukascopy_python.fetch(
-                    INSTRUMENT_FX_METALS_XAU_USD,
-                    dukascopy_python.INTERVAL_MIN_1,
-                    dukascopy_python.OFFER_SIDE_BID,
-                    chunk_start,
-                    chunk_end,
-                    max_retries=3,
-                )
-                break
-            except Exception as exc:
-                last_error = exc
-                logger.warning("    dukascopy attempt %s failed: %s", attempt, exc)
-                time.sleep(2 * attempt)
+        got = _dukascopy_chunk(dukascopy_python.INTERVAL_MIN_1, chunk_start, chunk_end)
         if got is None or got.empty:
-            logger.info("    no bars in this chunk (%s)", last_error)
+            logger.info("    no bars in this chunk")
         else:
             part = got.reset_index()
             if "timestamp" in part.columns:
@@ -383,6 +457,32 @@ def fetch_dukascopy_1m(days: int | None = None) -> pd.DataFrame:
         chunk_start = chunk_end
         if chunk_start < end:
             time.sleep(DUKA_SLEEP_SEC)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def fetch_dukascopy_daily() -> pd.DataFrame:
+    """Older daily silver from Dukascopy (TV daily starts around 2018)."""
+    import dukascopy_python
+
+    end = datetime.now(timezone.utc)
+    start = HISTORY_START
+    logger.info("  Dukascopy XAGUSD daily %s -> %s", start.date(), end.date())
+    frames: list[pd.DataFrame] = []
+    chunk_start = start
+    while chunk_start < end:
+        chunk_end = min(chunk_start + timedelta(days=400), end)
+        got = _dukascopy_chunk(dukascopy_python.INTERVAL_DAY_1, chunk_start, chunk_end)
+        if got is not None and not got.empty:
+            part = got.reset_index()
+            if "timestamp" in part.columns:
+                part = part.rename(columns={"timestamp": "datetime"})
+            frames.append(part)
+            logger.info("    daily chunk %s bars", f"{len(part):,}")
+        chunk_start = chunk_end
+        if chunk_start < end:
+            time.sleep(0.4)
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
@@ -439,10 +539,21 @@ def save_by_month(new_df: pd.DataFrame) -> list[tuple[str, int, int]]:
     return summary
 
 
-def run_1m_update() -> int:
+def run_1m_update(deep: bool = False) -> int:
     logger.info("1m update  %s  folder=%s", TV_SYMBOL, OUTPUT_DIR)
+    if deep:
+        now = datetime.now(timezone.utc)
+        contig = last_contiguous_timestamp()
+        if contig is None:
+            logger.info("Deep 1m history from %s up to %s", HISTORY_START.date(), now.date())
+            store_dukascopy_1m_range(HISTORY_START, now)
+        else:
+            gap_start = contig.tz_convert("UTC").to_pydatetime() - timedelta(minutes=2)
+            if gap_start < now:
+                logger.info("Deep 1m resume from last contiguous %s up to %s", contig, now.date())
+                store_dukascopy_1m_range(gap_start, now)
     logger.info(
-        "TradingView free 1m is ~5 days; catch-up from Dukascopy XAUUSD plus latest Vantage TV bars"
+        "TradingView free 1m is ~5 days; catch-up from Dukascopy XAGUSD plus latest Vantage TV bars"
     )
     frames: list[pd.DataFrame] = []
     duka = fetch_dukascopy_1m()
@@ -454,25 +565,42 @@ def run_1m_update() -> int:
         frames.append(tv)
         logger.info("  Vantage TV 1m total %s bars", f"{len(tv):,}")
     if not frames:
+        latest = last_stored_timestamp()
+        if latest is not None:
+            logger.info("No new 1m bars. Latest stored timestamp is still %s", latest)
+            return 0
         logger.info("No 1m bars returned.")
         return 1
     new_df = normalize_1m(pd.concat(frames, ignore_index=True))
     save_by_month(new_df)
     latest = last_stored_timestamp()
-    logger.info("1m complete. Latest gold bar: %s  rows now across month files", latest)
+    logger.info("1m complete. Latest silver bar: %s  rows now across month files", latest)
     return 0
 
 
-def run_daily_update() -> int:
+def run_daily_update(deep: bool = False) -> int:
     _, Interval = load_tv()
     logger.info("Vantage daily update  %s", TV_SYMBOL)
     n_bars = MAX_BARS
-    if DAILY_FILE.exists():
+    if DAILY_FILE.exists() and not deep:
         n_bars = 120
-    raw = tv_hist(Interval.in_daily, n_bars)
-    incoming = normalize_daily(raw)
+    frames: list[pd.DataFrame] = []
+    try:
+        raw = tv_hist(Interval.in_daily, n_bars)
+        frames.append(raw)
+    except Exception as exc:
+        logger.warning("  Vantage daily failed: %s", exc)
+    if deep:
+        duka = fetch_dukascopy_daily()
+        if not duka.empty:
+            frames.append(duka)
+            logger.info("  Dukascopy daily total %s bars", f"{len(duka):,}")
+    if not frames:
+        logger.info("No silver daily bars returned.")
+        return 1
+    incoming = normalize_daily(pd.concat(frames, ignore_index=True))
     if incoming.empty:
-        logger.info("No Vantage daily bars returned.")
+        logger.info("No silver daily bars returned.")
         return 1
     existing = (
         normalize_daily(pd.read_csv(DAILY_FILE)) if DAILY_FILE.exists() else pd.DataFrame(columns=DAILY_COLUMNS)
@@ -495,6 +623,13 @@ def run_daily_update() -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Download Vantage/Dukascopy silver into MARKET_DATA.")
+    parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Fill all Dukascopy 1-minute and daily history from 2015, then catch up to now.",
+    )
+    args = parser.parse_args()
     setup_logging()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     write_source()
@@ -502,31 +637,13 @@ def main() -> int:
     if lock is None:
         return 0
     try:
-        daily_rc = run_daily_update()
-        m1_rc = run_1m_update()
+        daily_rc = run_daily_update(deep=args.deep)
+        m1_rc = run_1m_update(deep=args.deep)
         return 0 if daily_rc == 0 or m1_rc == 0 else 1
     except Exception as exc:
-        logger.error("Vantage gold fetch failed: %s", exc)
+        logger.error("Vantage silver fetch failed: %s", exc)
         return 1
     finally:
-        try:
-            frames = [normalize_1m(pd.read_csv(path)) for path in list_month_files()]
-            frames = [frame for frame in frames if not frame.empty]
-            if frames:
-                if str(BASE_DIR) not in sys.path:
-                    sys.path.insert(0, str(BASE_DIR))
-                from gold_chart.events import write_xauusdt_utc_daily
-                minute = normalize_1m(pd.concat(frames, ignore_index=True))
-                daily = write_xauusdt_utc_daily(
-                    minute, OUTPUT_DIR / "Gold_Daily_XAUUSDT_UTC.csv"
-                )
-                logger.info(
-                    "XAUUSDT UTC daily: %s sessions -> %s",
-                    f"{len(daily):,}",
-                    OUTPUT_DIR / "Gold_Daily_XAUUSDT_UTC.csv",
-                )
-        except Exception as exc:
-            logger.warning("Could not write XAUUSDT UTC daily: %s", exc)
         lock.unlink(missing_ok=True)
 
 

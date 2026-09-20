@@ -1,13 +1,15 @@
 Option Explicit
-' Hidden gold 1m + daily fetch for Yahoo Finance and TradingView/Vantage.
-' Window style 0 = no console. Wait=True so both finish before the task ends.
-Dim sh, pythonw, yahooScript, tvScript, workdir
+' Hidden 1m + daily fetch: Yahoo gold, Vantage gold, Vantage silver.
+' Window style 0 = no console. Wait=True so each finish before the next starts.
+Dim sh, pythonw, yahooScript, tvGoldScript, tvSilverScript, workdir
 workdir = "c:\DATA\CODE\Stocks\BackTest"
 pythonw = "C:\Users\parmp\anaconda3\pythonw.exe"
 yahooScript = workdir & "\src\data_fetchers\fetch_gold_1min.py"
-tvScript = workdir & "\src\data_fetchers\fetch_vantage_gold.py"
+tvGoldScript = workdir & "\src\data_fetchers\fetch_vantage_gold.py"
+tvSilverScript = workdir & "\src\data_fetchers\fetch_vantage_silver.py"
 
 Set sh = CreateObject("WScript.Shell")
 sh.CurrentDirectory = workdir
 sh.Run """" & pythonw & """ """ & yahooScript & """", 0, True
-sh.Run """" & pythonw & """ """ & tvScript & """", 0, True
+sh.Run """" & pythonw & """ """ & tvGoldScript & """", 0, True
+sh.Run """" & pythonw & """ """ & tvSilverScript & """", 0, True

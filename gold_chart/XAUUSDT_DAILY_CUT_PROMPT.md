@@ -12,7 +12,7 @@ Do **not** cut at IST midnight (12:00 AM). That is what the current 1m files loo
 
 ## Data already on disk
 
-- Folder: `GOLD_DATA/Yahoo_Finance/` (Yahoo COMEX) or `GOLD_DATA/TradingView_Vantage/` (Vantage XAUUSD)
+- Folder: `MARKET_DATA/Yahoo_Finance_Gold/` (Yahoo COMEX) or `MARKET_DATA/TradingView_Vantage_Gold/` (Vantage XAUUSD)
 - 1m files: `August_2026.csv`, `September_2026.csv`, … (month name + year)
 - Columns: `Datetime,Open,High,Low,Close,Volume`
 - `Datetime` is **Asia/Kolkata IST**, offset `+05:30` (example: `2026-09-16 05:30:00+05:30`)
@@ -65,4 +65,4 @@ CoinDCX charts are TradingView of **XAUUSDT**. Same cut as crypto UTC daily. Oth
 
 ## Output
 
-Save day candles in the same feed subfolder, e.g. `GOLD_DATA/TradingView_Vantage/Gold_Daily_XAUUSDT_UTC.csv` or `GOLD_DATA/Yahoo_Finance/Gold_Daily_XAUUSDT_UTC.csv`, with `Date,Open,High,Low,Close,Volume`. `Date` = UTC session date (`YYYY-MM-DD`). Keep existing month 1m files unchanged.
+Save day candles in the same feed subfolder, e.g. `MARKET_DATA/TradingView_Vantage_Gold/Gold_Daily_XAUUSDT_UTC.csv` or `MARKET_DATA/Yahoo_Finance_Gold/Gold_Daily_XAUUSDT_UTC.csv`, with `Date,Open,High,Low,Close,Volume`. `Date` = UTC session date (`YYYY-MM-DD`). Keep existing month 1m files unchanged.
