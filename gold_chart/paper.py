@@ -57,6 +57,24 @@ TRADE_FIELDS = [
     "Entry_Fee",
     "Entry_GST",
     "Entry_Charges",
+    "Exit_Count",
+    "Total_Exit_Qty",
+    "Slippage_Cost",
+    "Exit_Fee",
+    "GST_On_Fees",
+    "Total_Charges",
+    "Gross_PnL_Before_Charges",
+    "Net_PnL_After_Charges",
+    "Gross_Return_Pct",
+    "Net_Return_Pct",
+    "Hold_Minutes",
+    "Capital_Before",
+    "Capital_After",
+    "Taker_Fee_Pct",
+    "GST_Pct",
+    "Take_Profit",
+    "Stop_Loss",
+    "Exit_Reason",
 ]
 for _n in range(1, MAX_EXITS + 1):
     TRADE_FIELDS.extend(
@@ -74,28 +92,6 @@ for _n in range(1, MAX_EXITS + 1):
             f"Exit_{_n}_Net_PnL",
         ]
     )
-TRADE_FIELDS.extend(
-    [
-        "Exit_Count",
-        "Total_Exit_Qty",
-        "Slippage_Cost",
-        "Exit_Fee",
-        "GST_On_Fees",
-        "Total_Charges",
-        "Gross_PnL_Before_Charges",
-        "Net_PnL_After_Charges",
-        "Gross_Return_Pct",
-        "Net_Return_Pct",
-        "Hold_Minutes",
-        "Capital_Before",
-        "Capital_After",
-        "Taker_Fee_Pct",
-        "GST_Pct",
-        "Take_Profit",
-        "Stop_Loss",
-        "Exit_Reason",
-    ]
-)
 
 TXN_FIELDS = [
     "Txn_ID",
@@ -468,6 +464,7 @@ def apply_paper_action(payload: dict[str, Any]) -> dict[str, Any]:
                 "Unknown paper action. Use set_capital, settings, stops, "
                 "long, short, close, close_all, reverse, or check."
             )
+        _remember_ticket(state, payload)
         _save_state(state)
         public = _public(state)
         if capital_ignored:
@@ -531,6 +528,26 @@ def _set_settings(state: dict[str, Any], payload: dict[str, Any]) -> None:
         raise ValueError("Size % must be between 0 and 100.")
     if float(state["leverage"]) < 1:
         raise ValueError("Leverage must be at least 1.")
+
+
+def _remember_ticket(state: dict[str, Any], payload: dict[str, Any]) -> None:
+    """Keep leverage / size as book defaults until the user changes them."""
+    lev_raw = payload.get("leverage")
+    if lev_raw not in (None, ""):
+        try:
+            leverage = float(lev_raw)
+        except (TypeError, ValueError):
+            leverage = None
+        if leverage is not None and math.isfinite(leverage) and leverage >= 1:
+            state["leverage"] = min(leverage, 125.0)
+    size_raw = payload.get("sizePct", payload.get("size_pct"))
+    if size_raw not in (None, ""):
+        try:
+            size = float(size_raw)
+        except (TypeError, ValueError):
+            size = None
+        if size is not None and math.isfinite(size) and 0 < size <= 100:
+            state["size_pct"] = size
 
 
 def _first_present(payload: dict[str, Any], *keys: str) -> Any:

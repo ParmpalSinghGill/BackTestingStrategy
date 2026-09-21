@@ -267,6 +267,7 @@ input[type="range"] {
 }
 #event-label-count-wrap input[type="range"] { width: 72px; }
 #event-label-count-wrap input[type="number"] { width: 42px; }
+#event-min-wrap select { min-width: 96px; }
 [data-follow].active {
   color: #fff;
   background: #00c07626;

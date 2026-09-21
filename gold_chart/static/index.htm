@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gold Replay Chart</title>
-  <link rel="stylesheet" href="/app.css?v=38">
+  <link rel="stylesheet" href="/app.css?v=39">
   <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
@@ -59,6 +59,14 @@
     <button id="next-day" title="Jump to the next session day">Next day</button>
     <div class="divider"></div>
     <button id="events-toggle" title="Show EventFinder levels on the chart. Off keeps replay exactly as it is now. Switching data turns Events off.">Events <i id="events-spinner" class="events-spinner" hidden></i></button>
+    <label class="field" id="event-min-wrap" title="Finest event in Next/Prev and S/R labels. Coarser timeframes stay on. Hourly includes hourly + daily + weekly + monthly.">Min
+      <select id="event-min">
+        <option value="Hourly" selected>Hourly</option>
+        <option value="Daily">Daily</option>
+        <option value="Weekly">Weekly</option>
+        <option value="Monthly">Monthly</option>
+      </select>
+    </label>
     <button id="event-prev" title="Jump to the previous triggered event candle" disabled>Prev event</button>
     <button id="event-next" title="Jump to the next triggered event candle" disabled>Next event</button>
     <button id="event-labels-toggle" title="Show nearest intact support and resistance as horizontal rays from the source candle." disabled>Show labels</button>
@@ -188,7 +196,7 @@
       <select id="paper-margin-mode" class="ticket-pill" title="Isolated margin. Cross is not simulated.">
         <option value="isolated">Isolated</option>
       </select>
-      <label class="ticket-pill ticket-lev" title="CoinDCX futures leverage">
+      <label class="ticket-pill ticket-lev" title="Saved until you change it. Every new trade uses this leverage.">
         <input id="paper-leverage" type="number" min="1" max="125" step="1" value="1">
         <span>x</span>
       </label>
@@ -262,7 +270,7 @@
       <label>Set capital
         <input id="paper-capital" type="number" min="1" step="1" value="10000">
       </label>
-      <p class="ticket-book-note" id="paper-capital-note">Starting money. Save applies it to Available when you have no open trades. Actual capital above moves with P&amp;L.</p>
+      <p class="ticket-book-note" id="paper-capital-note">Starting money. Changing it saves the book until you change it again. That amount is applied to Available when you have no open trades. Actual capital above moves with P&amp;L.</p>
       <label>Slippage %
         <input id="paper-slip" type="number" min="0" max="1" step="0.01" value="0.02">
       </label>
@@ -291,6 +299,6 @@
     <span id="status-right">Asia/Kolkata</span>
   </footer>
 
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>

@@ -7,6 +7,7 @@ const DRAWING_STORAGE_KEY = "gc-chart-drawings-shared";
 const REPLAY_STORAGE_KEY = "gc-chart-replay";
 const EVENTS_STORAGE_KEY = "gc-chart-events-on";
 const EVENT_LABELS_KEY = "gc-chart-event-labels";
+const EVENT_MIN_KEY = "gc-chart-event-min";
 const PAPER_ARROWS_KEY = "gc-chart-paper-arrows";
 const FOLLOW_STORAGE_KEY = "gc-chart-follow-head";
 // TradingView-style drawing palette: greyscale, then hues from light to dark.
@@ -194,6 +195,7 @@ let chartEventLabels = [];
 let eventsEnabled = false;
 let eventLabelsOn = false;
 let eventLabelCount = 1;
+let eventMinTf = "Hourly";
 try {
   eventsEnabled = localStorage.getItem(EVENTS_STORAGE_KEY) === "1";
 } catch {
@@ -208,6 +210,14 @@ try {
 } catch {
   eventLabelsOn = false;
   eventLabelCount = 1;
+}
+try {
+  const savedMin = localStorage.getItem(EVENT_MIN_KEY);
+  if (savedMin === "Hourly" || savedMin === "Daily" || savedMin === "Weekly" || savedMin === "Monthly") {
+    eventMinTf = savedMin;
+  }
+} catch {
+  eventMinTf = "Hourly";
 }
 let eventsLoading = false;
 let paperArrowsOn = true;
@@ -232,6 +242,22 @@ const EVENT_TF_COLOR = {
   Hourly: "#26a69a",
   PrevDay: "#f4c430",
   Today: "#00bcd4",
+};
+const EVENT_MIN_RANK = {
+  Hourly: 1,
+  Daily: 2,
+  Weekly: 3,
+  Monthly: 4,
+};
+const EVENT_TF_RANK = {
+  Hourly: 1,
+  Today: 2,
+  PrevDay: 2,
+  Daily: 2,
+  Weekly: 3,
+  Monthly: 4,
+  "1-Year": 5,
+  "2-Year": 5,
 };
 
 const TWO_POINT_TOOLS = ["trend", "measure"];
@@ -747,9 +773,15 @@ function eventColor(evt) {
   return EVENT_TF_COLOR[evt.timeframe] || "#f4c430";
 }
 
+function eventPassesMin(item) {
+  const rank = EVENT_TF_RANK[item?.timeframe] ?? 2;
+  return rank >= (EVENT_MIN_RANK[eventMinTf] || 1);
+}
+
 function navigationEvents() {
   const byTime = new Map();
   chartEvents.forEach((evt) => {
+    if (!eventPassesMin(evt)) return;
     const prev = byTime.get(evt.time);
     if (!prev || evt.status === "TOUCH") byTime.set(evt.time, evt);
   });
@@ -777,11 +809,28 @@ function saveEventLabelPrefs() {
   }
 }
 
+function saveEventMinTf() {
+  try {
+    localStorage.setItem(EVENT_MIN_KEY, eventMinTf);
+  } catch {
+    /* ignore */
+  }
+}
+
+function setEventMinTf(value) {
+  eventMinTf = EVENT_MIN_RANK[value] ? value : "Hourly";
+  saveEventMinTf();
+  syncEventLabelControls();
+  syncEventMarkers();
+  drawOverlay();
+}
+
 function syncEventLabelControls() {
   const toggle = document.getElementById("event-labels-toggle");
   const wrap = document.getElementById("event-label-count-wrap");
   const range = document.getElementById("event-label-count");
   const num = document.getElementById("event-label-count-num");
+  const minSelect = document.getElementById("event-min");
   if (toggle) {
     toggle.disabled = !eventsEnabled || eventsLoading;
     toggle.classList.toggle("active", eventsEnabled && eventLabelsOn && !eventsLoading);
@@ -789,6 +838,10 @@ function syncEventLabelControls() {
   if (wrap) wrap.hidden = !eventsEnabled || !eventLabelsOn;
   if (range) range.value = String(eventLabelCount);
   if (num && document.activeElement !== num) num.value = String(eventLabelCount);
+  if (minSelect) {
+    minSelect.value = eventMinTf;
+    minSelect.disabled = !eventsEnabled || eventsLoading;
+  }
 }
 
 function setEventLabelsEnabled(on) {
@@ -875,7 +928,9 @@ function activeEventLabels() {
   if (!Number.isFinite(price) || price <= 0) return [];
   const session = replaySessionRange();
   const hourlyFrom = hourlyLabelFloor(replayTime);
-  const live = chartEventLabels.filter((lab) => isEventLabelLive(lab, price, session, hourlyFrom));
+  const live = chartEventLabels.filter((lab) => (
+    eventPassesMin(lab) && isEventLabelLive(lab, price, session, hourlyFrom)
+  ));
   return [
     ...pickNearestEventLabels(live, "support", eventLabelCount),
     ...pickNearestEventLabels(live, "resistance", eventLabelCount),
@@ -1106,6 +1161,7 @@ function syncEventMarkers() {
   if (eventsEnabled && chartEvents.length && currentCandles.length) {
     const byTime = new Map();
     chartEvents.forEach((evt) => {
+      if (!eventPassesMin(evt)) return;
       if (evt.time > replayTime) return;
       const time = snapEventMarkerTime(evt.time);
       if (time == null) return;
@@ -1906,8 +1962,12 @@ function restartPlayTimer() {
 }
 
 let paperState = null;
+let paperBookLoaded = false;
 let paperLines = [];
 let paperSettingsTimer = 0;
+let paperSettingsDirty = false;
+let paperSettingsSaving = false;
+let paperCapitalSaving = false;
 let paperStopsTimer = 0;
 let paperChecking = false;
 let paperSide = "long";
@@ -2084,10 +2144,13 @@ function fillPaperInputs(state, { forceCapital = false, syncSettings = false } =
       capital.value = String(state.setCapital ?? 10000);
     }
   }
+  const lev = paperField("paper-leverage");
+  if (lev && document.activeElement !== lev && !paperSettingsDirty && state.leverage != null) {
+    lev.value = String(state.leverage);
+  }
   if (syncSettings) {
     const map = [
       ["paper-size", "sizePct"],
-      ["paper-leverage", "leverage"],
       ["paper-slip", "slippagePct"],
       ["paper-taker", "takerFeePct"],
     ];
@@ -2225,7 +2288,7 @@ function updateTicketPreview() {
   if (capitalNote) {
     capitalNote.textContent = paperPositions().length
       ? "Close open trades first. Available is leftover cash, not Set capital."
-      : "Starting money. Save applies it to Available when you have no open trades. Actual capital above moves with P&L.";
+      : "Starting money. Changing it saves the book until you change it again. That amount is applied to Available when you have no open trades. Actual capital above moves with P&L.";
   }
   const actualEl = paperField("paper-actual");
   if (actualEl) {
@@ -2305,6 +2368,7 @@ function bindPaperPartial(box) {
         const pct = Number(btn.dataset.pct);
         const qty = paperQtyStep(remain * (pct / 100));
         if (input) input.value = qty.toFixed(3);
+        if (qty > 0) paperClose(id, qty);
       });
     });
     row.querySelector("[data-exit]")?.addEventListener("click", (event) => {
@@ -2492,23 +2556,105 @@ async function loadPaperState() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not load paper book");
     applyPaperState(payload, { forceCapital: true, syncSettings: true });
+    paperBookLoaded = true;
   } catch (error) {
     const hud = paperField("paper-hud");
     if (hud) hud.textContent = error.message;
   }
 }
 
+function paperBookFields() {
+  const body = {};
+  const lev = Number(paperField("paper-leverage")?.value);
+  if (Number.isFinite(lev) && lev >= 1) body.leverage = lev;
+  const sizePct = Number(paperField("paper-size")?.value);
+  if (Number.isFinite(sizePct) && sizePct > 0) body.sizePct = sizePct;
+  return body;
+}
+
+function schedulePaperSettings() {
+  paperSettingsDirty = true;
+  const lev = Number(paperField("paper-leverage")?.value);
+  if (paperState && Number.isFinite(lev) && lev >= 1) paperState.leverage = lev;
+  updateTicketPreview();
+  if (paperSettingsTimer) clearTimeout(paperSettingsTimer);
+  paperSettingsTimer = setTimeout(() => {
+    persistPaperSettings();
+  }, 200);
+}
+
+async function persistPaperSettings() {
+  if (!paperBookLoaded || paperSettingsSaving) return;
+  if (paperSettingsTimer) {
+    clearTimeout(paperSettingsTimer);
+    paperSettingsTimer = 0;
+  }
+  paperSettingsSaving = true;
+  let savedOk = false;
+  try {
+    await paperPost({ action: "settings", ...paperBookFields() });
+    savedOk = true;
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    paperSettingsSaving = false;
+    paperSettingsDirty = false;
+    const lev = Number(paperField("paper-leverage")?.value);
+    const saved = Number(paperState?.leverage);
+    if (
+      savedOk
+      && Number.isFinite(lev)
+      && lev >= 1
+      && (!Number.isFinite(saved) || Math.abs(lev - saved) > 0.001)
+    ) {
+      schedulePaperSettings();
+    }
+  }
+}
+
+async function persistPaperCapital() {
+  if (!paperBookLoaded || paperCapitalSaving) return false;
+  const capital = Number(paperField("paper-capital")?.value);
+  const setCap = Number(paperState?.setCapital);
+  if (!Number.isFinite(capital) || capital <= 0) return false;
+  if (Number.isFinite(setCap) && Math.abs(capital - setCap) < 0.009) return false;
+  if (paperPositions().length) {
+    fillPaperInputs(paperState, { forceCapital: true });
+    updateTicketPreview();
+    return false;
+  }
+  paperCapitalSaving = true;
+  try {
+    await paperPost({
+      action: "set_capital",
+      capital,
+      time: replayTime,
+      timeframe: currentTimeframe,
+    });
+    return true;
+  } catch (error) {
+    window.alert(error.message);
+    loadPaperState();
+    return false;
+  } finally {
+    paperCapitalSaving = false;
+  }
+}
+
 async function paperPost(body) {
+  const payloadBody = paperBookLoaded
+    ? { ...paperBookFields(), ...body }
+    : { ...body };
   const response = await fetch("/api/paper", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payloadBody),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Paper request failed");
   applyPaperState(payload, {
-    forceCapital: body.action === "set_capital" || body.capital != null,
-    syncSettings: body.action === "settings" || body.action === "set_capital",
+    forceCapital: payloadBody.action === "set_capital" || payloadBody.capital != null,
+    syncSettings: payloadBody.action === "settings" || payloadBody.action === "set_capital",
   });
   return payload;
 }
@@ -2523,6 +2669,7 @@ function paperMark() {
 
 async function paperSubmit() {
   try {
+    await persistPaperCapital();
     await paperPost({
       action: paperSide === "short" ? "short" : "long",
       ...paperMark(),
@@ -2727,18 +2874,7 @@ function paperPriceY(price) {
 }
 
 function paperClusterX(clusterW) {
-  const range = chart.timeScale().getVisibleLogicalRange();
-  let x = null;
-  if (range) {
-    const last = currentCandles.length ? currentCandles.length - 1 : range.to;
-    x = chart.timeScale().logicalToCoordinate(Math.min(range.to, last));
-  }
-  if (x == null || !Number.isFinite(x)) {
-    const lastBar = currentCandles[currentCandles.length - 1];
-    x = lastBar ? coordinateForTime(lastBar.time) : overlayWidth * 0.55;
-  }
-  if (x == null || !Number.isFinite(x)) x = overlayWidth * 0.55;
-  return Math.min(Math.max(8, x + 10), Math.max(8, overlayWidth - clusterW - 16));
+  return Math.max(8, overlayWidth - clusterW - 14);
 }
 
 function drawPaperTags() {
@@ -2805,8 +2941,9 @@ function drawPaperTags() {
     const qtyW = Math.ceil(ctx.measureText(qtyText).width) + 16;
     const posW = Math.ceil(ctx.measureText(`${sideText} ${pnlText}`).width) + 16;
     const closeW = 26;
+    const pctW = 34;
     const barW = qtyW + posW + closeW;
-    const clusterW = reverseW + 4 + tpW + slW + 8 + barW;
+    const clusterW = reverseW + 4 + tpW + slW + 8 + barW + 4 + pctW * 3;
     const x = paperClusterX(clusterW);
     const top = y - h / 2;
     const teal = "#00c076";
@@ -2836,6 +2973,16 @@ function drawPaperTags() {
     ctx.fillText("×", barX + qtyW + posW + 6, y + 0.5);
     paperTagHits.push({ x: barX, y: top, w: qtyW + posW, h, action: "none", id: pos.id });
     paperTagHits.push({ x: barX + qtyW + posW, y: top, w: closeW, h, action: "exit", id: pos.id });
+    const pctX = barX + barW + 4;
+    drawChip(pctX, top, pctW, h, short ? red : teal, dark, "25%", short ? red : teal, "partial", {
+      id: pos.id, pct: 25,
+    });
+    drawChip(pctX + pctW, top, pctW, h, short ? red : teal, dark, "50%", short ? red : teal, "partial", {
+      id: pos.id, pct: 50,
+    });
+    drawChip(pctX + pctW * 2, top, pctW, h, short ? red : teal, dark, "75%", short ? red : teal, "partial", {
+      id: pos.id, pct: 75,
+    });
   });
   ctx.restore();
 }
@@ -4270,6 +4417,13 @@ shell.addEventListener("pointerdown", (event) => {
       paperClose(tagHit.id);
       return;
     }
+    if (tagHit.action === "partial") {
+      const pos = paperById(tagHit.id);
+      const remain = paperRemainQty(pos);
+      const qty = paperQtyStep(remain * (Number(tagHit.pct) / 100));
+      if (qty > 0) paperClose(tagHit.id, qty);
+      return;
+    }
     if (tagHit.action === "reverse") {
       paperReverse(tagHit.id);
       return;
@@ -4682,6 +4836,9 @@ document.getElementById("event-next").addEventListener("click", () => {
   pauseReplay();
   jumpNextEvent();
 });
+document.getElementById("event-min")?.addEventListener("change", (event) => {
+  setEventMinTf(event.target.value);
+});
 document.getElementById("event-labels-toggle").addEventListener("click", () => {
   if (!eventsEnabled) return;
   setEventLabelsEnabled(!eventLabelsOn);
@@ -4725,9 +4882,17 @@ document.getElementById("paper-size-usdt").addEventListener("input", () => {
   }
   updateTicketPreview();
 });
-["paper-leverage", "paper-slip", "paper-taker", "paper-capital"].forEach((id) => {
+document.getElementById("paper-leverage").addEventListener("input", schedulePaperSettings);
+document.getElementById("paper-leverage").addEventListener("change", persistPaperSettings);
+document.getElementById("paper-leverage").addEventListener("blur", () => {
+  if (paperSettingsDirty) persistPaperSettings();
+});
+["paper-slip", "paper-taker"].forEach((id) => {
   document.getElementById(id).addEventListener("input", updateTicketPreview);
 });
+document.getElementById("paper-capital").addEventListener("input", updateTicketPreview);
+document.getElementById("paper-capital").addEventListener("change", persistPaperCapital);
+document.getElementById("paper-capital").addEventListener("blur", persistPaperCapital);
 document.getElementById("paper-arrows-toggle").addEventListener("click", () => {
   setPaperArrowsEnabled(!paperArrowsOn);
 });
@@ -4851,4 +5016,5 @@ syncEventLabelControls();
 document.getElementById("data-feed").addEventListener("change", (event) => {
   switchDataFeed(event.target.value);
 });
+loadPaperState();
 loadSource();
