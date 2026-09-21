@@ -13,10 +13,67 @@ Quantitative swing trading for Indian equities (NSE/BSE). **Current verified bes
 * 📈 **Output Format & Tax Impact Guide**: [Guide/OutputFormatGuide.md](Guide/OutputFormatGuide.md) (Working PNG Hyperlinks, Visualizations & Before/After Tax CAGR Engine)
 * 🏆 **Current Best Strategy**: [strategy/BEST_STRATEGY.md](strategy/BEST_STRATEGY.md) (verified 5 Sep 2026 rules and net CAGRs)
 * ⚙️ **Algorithm (what it does)**: [strategy/ALGORITHM.md](strategy/ALGORITHM.md)
-* 📅 **Daily entries (4 PM)**: `python swing_strategy/run_daily_all_forecasts.py` — download once, then `Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt` (new names 1:2), and `Swing_PP_RR.txt` (raise TP after a +1R close)
+* 📅 **Daily entries (4 PM)**: `python swing_strategy/run_daily_all_forecasts.py` — download once, then `Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt` (enter next open; scratch if that close is below C1 high), `Swing_PP_RR.txt` (SHIFT target FROM 1:2 TO 1:k after a +1R close), and always-on `Swing_PP_ins.txt`
 * 📓 **Tried experiments (do not retry)**: [strategy/TRIED_EXPERIMENTS.md](strategy/TRIED_EXPERIMENTS.md)
+* 🥇 **Gold / silver replay chart**: [`gold_chart/`](gold_chart/) — local GUI at http://127.0.0.1:8766 (see [run latest](#run-the-latest-replay-chart))
 
-> 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. All historical datasets (`data/`, `data_daily/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored via `.gitignore`.
+> 🔒 **Git Repository Storage Policy**: Only source code, documentation, and build scripts are tracked in Git. Historical datasets (`data/`, `data_daily/`, `MARKET_DATA/`), generated statements (`Reports/`), and chart graphics (`Plots/`) are ignored. Replay-chart screenshots in `gold_chart/docs/` are tracked so this README can show the live GUI.
+
+---
+
+## Run the latest replay chart
+
+GitHub: [ParmpalSinghGill/BackTestingStrategy](https://github.com/ParmpalSinghGill/BackTestingStrategy)
+
+### First clone
+
+```bash
+git clone https://github.com/ParmpalSinghGill/BackTestingStrategy.git
+cd BackTestingStrategy
+```
+
+### Already cloned — pull the latest `main`
+
+```bash
+git checkout main
+git pull origin main
+```
+
+That is the chart you should run: paper Isolated book, SL/TP that only fill on a later touch, chart partial exits, Events Min (Hourly/Daily/Weekly/Monthly), and the Data dropdown for COMEX gold, Vantage gold spot, and Vantage silver spot.
+
+### Start the GUI
+
+Needs Python 3 and `pandas` (`pip install -r requirements.txt`). The chart **does not download** market data; it reads local `MARKET_DATA/` folders.
+
+```bash
+python gold_chart/app.py
+```
+
+Then open **http://127.0.0.1:8766/index.htm**. If the page looks like an old build, hard-refresh (Ctrl+F5) or add `?v=62` (current `app.js` cache).
+
+On Windows you can also double-click `run_gold_chart.bat`. `run_gold_chart_server.vbs` starts the same server hidden (used at sign-in so the chart is already up).
+
+If the port is already serving, `app.py` prints that and exits — just open the URL above.
+
+### Data feeds (local only)
+
+| Data dropdown | Folder | Symbol |
+|---|---|---|
+| COMEX Gold Futures | `MARKET_DATA/Yahoo_Finance_Gold` | `GC=F` |
+| Vantage Gold Spot | `MARKET_DATA/TradingView_Vantage_Gold` | `XAUUSD` |
+| Vantage Silver Spot | `MARKET_DATA/TradingView_Vantage_Silver` | `XAGUSD` |
+
+1m/intraday uses recent month CSVs; 1D/1W uses `Gold_Daily.csv` / `Silver_Daily.csv`. The hidden 6-hour fetch job updates those folders; the GUI never fetches Yahoo or TradingView itself.
+
+### What the GUI does
+
+![Gold replay chart — COMEX 1h with paper ticket](gold_chart/docs/gold-replay-gui.png)
+
+* **Replay** — pick Date + Time IST, then Play / Next / Next hour / Next day. Drawings stay in the browser.
+* **Paper** — Isolated, CoinDCX-style taker + GST + slippage. Drag TP/SL on the chart (short SL above mark, long SL below). Partial close from the ticket or 25/50/75% chips. Bought vs remaining qty and mark value stay in the ticket; P&L chips stay pinned on the right.
+* **Events** — optional S/R labels. **Min** (Hourly default) is the finest TF for Next/Prev and on-chart labels; coarser timeframes stay on.
+
+![Gold replay chart — Events on, Min Hourly](gold_chart/docs/gold-replay-events.png)
 
 ---
 
@@ -24,6 +81,12 @@ Quantitative swing trading for Indian equities (NSE/BSE). **Current verified bes
 
 ```
 .
+├── gold_chart/                   # Local gold/silver replay GUI (port 8766)
+│   ├── app.py
+│   ├── paper.py
+│   ├── static/
+│   └── docs/                     # Live GUI screenshots used above
+├── run_gold_chart.bat            # Open browser + start app.py
 ├── swing_strategy/
 │   ├── run_ml_wave4.py           # Current best: meta-label + vol-managed 1:2
 │   ├── run_ml_next_search.py     # Meta-label Kelly (no vol scale)
@@ -45,7 +108,7 @@ Quantitative swing trading for Indian equities (NSE/BSE). **Current verified bes
 │   └── analysis/
 │       └── indian_brokerage_calculator.py
 ├── .gitignore                    # Code-only git rules (excluding datasets, plots & reports)
-├── README.md                     # Base Swing Strategy Documentation
+├── README.md
 └── requirements.txt              # Python package dependencies
 ```
 

@@ -23,4 +23,6 @@ Plots/
 *.xlsx
 *.pkl
 *.png
+!gold_chart/docs/
+!gold_chart/docs/*.png
 *.html
