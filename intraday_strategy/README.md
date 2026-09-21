@@ -6,7 +6,8 @@ A dedicated Python quantitative trading suite designed for **Intraday Mean Rever
 
 ## 🔗 Cross-Repository Navigation
 
-* 📊 **Base Strategy Repository**: [Swing Trading Strategy Suite](../README.md) (`swing_strategy/`)
+* 📊 **Indian NSE swing backtests**: [swing_strategy/README.md](../swing_strategy/README.md)
+* 🥇 **Gold / silver replay GUI**: [root README](../README.md)
 * ⚡ **Intraday Subfolder Module**: Current Directory (`intraday_strategy/`)
 
 > 🔒 **Git Repository Storage Policy**: Only source code and documentation are tracked in Git. Generated intraday logs, tick datasets, trade plots, and reports are excluded via `.gitignore`.
