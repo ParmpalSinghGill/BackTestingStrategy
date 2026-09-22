@@ -1,6 +1,11 @@
+import sys
+from pathlib import Path
+
 import pandas as pd
 
-from gold_chart.events import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backtest"))
+
+from events import (
     drop_weekend_bars,
     utc_session_daily,
     utc_session_open,

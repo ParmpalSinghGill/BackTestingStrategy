@@ -1,0 +1,522 @@
+//@version=5
+// Swing_PP — TradingView port of the live 4pm book (not Swing_low / Swing_Live).
+//
+// Paste into Pine Editor → Save → add to a DAILY NSE/BSE chart.
+//
+// C1 green open-below → C2 close > C1 high → ENTER C3 at OPEN.
+// SL = sweep-to-C1 low × 0.99. Entry bar: SL, else 1:2, else close < C1 high → SELL AT CLOSE.
+// After +1R close: SHIFT FROM 1:2 TO 1:k next open (or KEEP 1:2). SL → BE.
+// Live k is on Swing_PP_RR.txt (P6≥0.85→1:6 else P5≥0.85→1:5 else P3≥0.80→1:3).
+
+strategy("Swing_PP · C3 open · scratch · SHIFT",
+     overlay              = true,
+     pyramiding           = 0,
+     initial_capital      = 50000,
+     default_qty_type     = strategy.cash,
+     default_qty_value    = 50000,
+     commission_type      = strategy.commission.percent,
+     commission_value     = 0.03,
+     process_orders_on_close = false,
+     calc_on_every_tick   = false,
+     max_lines_count      = 120,
+     max_labels_count     = 80,
+     max_boxes_count      = 20)
+
+grpL = "Liquidity"
+i_m2       = input.int(2, "M2 wick-sweeps allowed", minval=0, maxval=2, group=grpL)
+i_skip     = input.int(2, "Skip daily bars after source low", minval=0, maxval=5, group=grpL)
+i_oneSide  = input.int(3, "Min fully-above on one HTF side", minval=3, maxval=5, group=grpL)
+i_both     = input.int(2, "Min fully-above on both HTF sides", minval=2, maxval=4, group=grpL)
+i_minAge   = input.int(1, "Min months liquidity → entry (Swing_PP = 1)", minval=0, maxval=12, group=grpL)
+i_hunt     = input.int(90, "Max bars sweep → C1", minval=10, maxval=120, group=grpL)
+i_nearPct  = input.float(5.0, "Use lower intact support if within %", step=0.5, group=grpL)
+i_minRange = input.float(0.3, "Skip HTF if range/low < %", step=0.1, group=grpL)
+
+grpT = "Trade"
+i_slMult   = input.float(0.99, "SL = sweep-to-C1 low ×", step=0.001, group=grpT)
+i_scratch  = input.bool(true, "Entry-bar scratch if close < C1 high", group=grpT)
+i_riskPct  = input.float(2.0, "Risk % of equity (qty)", minval=0.1, step=0.1, group=grpT)
+i_minRisk  = input.float(0.05, "Skip if entry − SL ≤", step=0.01, group=grpT)
+i_stretch  = input.string("Stay 1:2 (read RR file)", "After +1R close", options=["Stay 1:2 (read RR file)", "Raise to 1:3", "Raise to 1:5", "Raise to 1:6"], group=grpT)
+
+grpV = "Display"
+i_showLiq  = input.bool(true, "Draw active liquidity", group=grpV)
+i_showHow  = input.bool(true, "HOW TO TRADE table", group=grpV)
+
+stretchK() =>
+    i_stretch == "Raise to 1:3" ? 3 : i_stretch == "Raise to 1:5" ? 5 : i_stretch == "Raise to 1:6" ? 6 : 2
+
+type Level
+    float price
+    string tf
+    int rank
+    int srcBar
+    int liqTime
+    int tradeFrom
+    int sweeps
+    bool gone
+    line ln
+
+type Hunt
+    int sweepBar
+    int untilBar
+    float support
+    string tf
+    int liqTime
+    float sweepLow
+
+var array<Level> levels = array.new<Level>()
+var Hunt hunt = Hunt.new()
+var bool hunting = false
+var array<label> labs = array.new<label>()
+var int c1Bar = na
+var float c1High = na
+var float c1Low = na
+var float slPx = na
+var float entryPx = na
+var float tp2Px = na
+var float tpWork = na
+var int workRR = 2
+var int entryBar = na
+var bool armed1R = false
+var bool upgradeDone = false
+var bool pendingEntry = false
+var string pendingTf = ""
+var string lastExit = ""
+var int lastShiftBar = na
+
+var float wO = na
+var float wH = na
+var float wL = na
+var float wC = na
+var float wV = na
+var int wSrc = na
+var int wT = na
+var float mO = na
+var float mH = na
+var float mL = na
+var float mC = na
+var float mV = na
+var int mSrc = na
+var int mT = na
+var float yO = na
+var float yH = na
+var float yL = na
+var float yC = na
+var float yV = na
+var int ySrc = na
+var int yT = na
+
+var array<float> wo = array.new<float>()
+var array<float> wh = array.new<float>()
+var array<float> wl = array.new<float>()
+var array<float> wc = array.new<float>()
+var array<float> wv = array.new<float>()
+var array<int> wsrc = array.new<int>()
+var array<int> wt = array.new<int>()
+var array<float> mo = array.new<float>()
+var array<float> mh = array.new<float>()
+var array<float> ml = array.new<float>()
+var array<float> mc = array.new<float>()
+var array<float> mv = array.new<float>()
+var array<int> msrc = array.new<int>()
+var array<int> mt = array.new<int>()
+var array<float> yo = array.new<float>()
+var array<float> yh = array.new<float>()
+var array<float> yl = array.new<float>()
+var array<float> yc = array.new<float>()
+var array<float> yv = array.new<float>()
+var array<int> ysrc = array.new<int>()
+var array<int> yt = array.new<int>()
+var array<int> wDone = array.new<int>()
+var array<int> mDone = array.new<int>()
+var array<int> yDone = array.new<int>()
+
+newW = ta.change(time("W")) != 0
+newM = ta.change(time("M")) != 0
+newY = ta.change(time("12M")) != 0
+
+countAbove(array<float> aL, array<float> aC, int i, int step, int cap) =>
+    float L = array.get(aL, i)
+    int n = 0
+    int j = i + step
+    int sz = array.size(aL)
+    int out = 0
+    for k = 0 to cap - 1
+        if j < 0 or j >= sz
+            break
+        if not (array.get(aC, j) > L and array.get(aL, j) > L)
+            break
+        n := n + 1
+        j := j + step
+        out := n
+    out
+
+tfRank(string tf) =>
+    tf == "Yearly" ? 3 : tf == "Monthly" ? 2 : 1
+
+tfColor(string tf) =>
+    tf == "Yearly" ? color.new(#f5c542, 0) : tf == "Monthly" ? color.new(#5ad4c8, 0) : color.new(#7aa2f7, 0)
+
+alreadySwing(array<int> done, int srcBar) =>
+    bool hit = false
+    int n = array.size(done)
+    if n > 0
+        for i = 0 to n - 1
+            if array.get(done, i) == srcBar
+                hit := true
+    hit
+
+tryAddSwing(array<float> aH, array<float> aL, array<float> aC, array<float> aV, array<int> aSrc, array<int> aT, array<int> done) =>
+    bool add = false
+    float px = 0.0
+    int srcB = 0
+    int liqT = 0
+    int sz = array.size(aL)
+    int needL = i_both
+    int needRmin = math.max(i_both, math.max(i_skip, 2))
+    int one = i_oneSide
+    if sz >= needL + needRmin + 1
+        for needR = needRmin to one
+            int i = sz - 1 - needR
+            if i >= needL
+                bool fresh = not alreadySwing(done, array.get(aSrc, i))
+                float L = array.get(aL, i)
+                float H = array.get(aH, i)
+                bool rngOk = L > 0 and H > L and (H - L) / L * 100.0 >= i_minRange
+                bool volOk = array.get(aV, i) > 0
+                int left = rngOk and volOk and fresh ? countAbove(aL, aC, i, -1, 8) : 0
+                int right = rngOk and volOk and fresh ? countAbove(aL, aC, i, 1, 8) : 0
+                int needRight = left >= one ? needRmin : one
+                bool ok = fresh and rngOk and volOk and left >= needL and right >= needRmin and math.max(left, right) >= one and right >= needRight and needR == needRight
+                if ok
+                    add := true
+                    px := L
+                    srcB := array.get(aSrc, i)
+                    liqT := array.get(aT, i)
+    [add, px, srcB, liqT]
+
+plusMonths(int t0, int months) =>
+    int y = year(t0)
+    int m = month(t0) + months
+    int d = dayofmonth(t0)
+    int yy = m > 12 ? y + int(math.floor((m - 1) / 12.0)) : y
+    int mm = m > 12 ? ((m - 1) % 12) + 1 : m
+    timestamp(yy, mm, math.min(d, 28), 0, 0, 0)
+
+ageOk(int liqTime) =>
+    i_minAge <= 0 or time >= plusMonths(liqTime, i_minAge)
+
+isC1(float support) =>
+    close > open and open < support
+
+addLevel(float price, string tf, int srcBar, int liqTime) =>
+    Level lv = Level.new(price, tf, tfRank(tf), srcBar, liqTime, srcBar + 1 + i_skip, 0, false, na)
+    if i_showLiq
+        lv.ln := line.new(srcBar, price, bar_index, price, xloc=xloc.bar_index, extend=extend.right, color=color.new(tfColor(tf), 40), style=line.style_dotted, width=1)
+    array.push(levels, lv)
+
+pushHtf(array<float> aO, array<float> aH, array<float> aL, array<float> aC, array<float> aV, array<int> aSrc, array<int> aT, float o, float h, float l, float c, float v, int src, int t) =>
+    array.push(aO, o)
+    array.push(aH, h)
+    array.push(aL, l)
+    array.push(aC, c)
+    array.push(aV, v)
+    array.push(aSrc, src)
+    array.push(aT, t)
+
+pushLab(label lb) =>
+    array.push(labs, lb)
+    if array.size(labs) > 40
+        label.delete(array.shift(labs))
+
+// ── commit closed HTF candles, then accumulate the current one ───────────
+bool commitW = newW and not na(wO)
+bool commitM = newM and not na(mO)
+bool commitY = newY and not na(yO)
+if commitW
+    pushHtf(wo, wh, wl, wc, wv, wsrc, wt, wO, wH, wL, wC, wV, wSrc, wT)
+[wAdd, wPx, wSb, wLt] = tryAddSwing(wh, wl, wc, wv, wsrc, wt, wDone)
+if commitW and wAdd
+    addLevel(wPx, "Weekly", wSb, wLt)
+    array.push(wDone, wSb)
+if newW or na(wO)
+    wO := open
+    wH := high
+    wL := low
+    wC := close
+    wV := volume
+    wSrc := bar_index
+    wT := time
+else
+    wH := math.max(wH, high)
+    wC := close
+    wV := wV + volume
+    wT := time
+    if low < wL
+        wL := low
+        wSrc := bar_index
+
+if commitM
+    pushHtf(mo, mh, ml, mc, mv, msrc, mt, mO, mH, mL, mC, mV, mSrc, mT)
+[mAdd, mPx, mSb, mLt] = tryAddSwing(mh, ml, mc, mv, msrc, mt, mDone)
+if commitM and mAdd
+    addLevel(mPx, "Monthly", mSb, mLt)
+    array.push(mDone, mSb)
+if newM or na(mO)
+    mO := open
+    mH := high
+    mL := low
+    mC := close
+    mV := volume
+    mSrc := bar_index
+    mT := time
+else
+    mH := math.max(mH, high)
+    mC := close
+    mV := mV + volume
+    mT := time
+    if low < mL
+        mL := low
+        mSrc := bar_index
+
+if commitY
+    pushHtf(yo, yh, yl, yc, yv, ysrc, yt, yO, yH, yL, yC, yV, ySrc, yT)
+[yAdd, yPx, ySb, yLt] = tryAddSwing(yh, yl, yc, yv, ysrc, yt, yDone)
+if commitY and yAdd
+    addLevel(yPx, "Yearly", ySb, yLt)
+    array.push(yDone, ySb)
+if newY or na(yO)
+    yO := open
+    yH := high
+    yL := low
+    yC := close
+    yV := volume
+    ySrc := bar_index
+    yT := time
+else
+    yH := math.max(yH, high)
+    yC := close
+    yV := yV + volume
+    yT := time
+    if low < yL
+        yL := low
+        ySrc := bar_index
+
+// ── walk liquidity / sweeps ───────────────────────────────────────────────
+bool startHunt = false
+float sweepSup = na
+string sweepTf = ""
+int sweepLiqT = na
+float sweepLow0 = na
+int sweepBar0 = na
+int sweepRank = -1
+
+int nLv = array.size(levels)
+if nLv > 0
+    for i = 0 to nLv - 1
+        Level lv = array.get(levels, i)
+        if not lv.gone
+            if close < lv.price
+                lv.gone := true
+            else if low < lv.price
+                int prior = lv.sweeps
+                bool tradable = bar_index >= lv.tradeFrom and prior <= i_m2 and not hunting and not pendingEntry and strategy.position_size == 0
+                if tradable
+                    float sup = lv.price
+                    string tfUse = lv.tf
+                    int nBelow = array.size(levels)
+                    float nearest = na
+                    string ntf = lv.tf
+                    if nBelow > 0
+                        for j = 0 to nBelow - 1
+                            Level oth = array.get(levels, j)
+                            bool alive = not oth.gone and oth.sweeps <= i_m2 and oth.price < lv.price
+                            bool better = alive and (na(nearest) or oth.price > nearest)
+                            nearest := better ? oth.price : nearest
+                            ntf := better ? oth.tf : ntf
+                    bool useLower = not na(nearest) and lv.price > 0 and (lv.price - nearest) / lv.price * 100.0 <= i_nearPct
+                    sup := useLower ? nearest : lv.price
+                    tfUse := useLower ? ntf : lv.tf
+                    int rk = tfRank(tfUse)
+                    if rk >= sweepRank
+                        startHunt := true
+                        sweepSup := sup
+                        sweepTf := tfUse
+                        sweepLiqT := lv.liqTime
+                        sweepLow0 := low
+                        sweepBar0 := bar_index
+                        sweepRank := rk
+                lv.sweeps := prior + 1
+
+if startHunt
+    hunt.sweepBar := sweepBar0
+    hunt.untilBar := sweepBar0 + i_hunt
+    hunt.support := sweepSup
+    hunt.tf := sweepTf
+    hunt.liqTime := sweepLiqT
+    hunt.sweepLow := sweepLow0
+    hunting := true
+    c1Bar := na
+
+if hunting and (na(c1Bar) or bar_index <= c1Bar)
+    hunt.sweepLow := math.min(hunt.sweepLow, low)
+
+bool a1Now = false
+
+if hunting and strategy.position_size == 0 and not pendingEntry
+    if bar_index > hunt.untilBar
+        hunting := false
+        c1Bar := na
+        c1High := na
+        c1Low := na
+    else if na(c1Bar)
+        if isC1(hunt.support)
+            c1Bar := bar_index
+            c1High := high
+            c1Low := low
+    else if bar_index == c1Bar + 1
+        bool c2Ok = close > c1High and low >= c1Low
+        if c2Ok and ageOk(hunt.liqTime)
+            float slTry = math.min(hunt.sweepLow, c1Low) * i_slMult
+            float est = close
+            if est - slTry > i_minRisk
+                a1Now := true
+                pendingEntry := true
+                pendingTf := hunt.tf
+                slPx := slTry
+                float riskCash = strategy.equity * i_riskPct / 100.0
+                float qty = math.max(1.0, math.floor(riskCash / (est - slTry)))
+                strategy.entry("PP", strategy.long, qty=qty, comment="C3 OPEN")
+                strategy.exit("X", "PP", stop=slTry, comment_loss="SL")
+                pushLab(label.new(bar_index, high, "C2 A1  ENTER TOMORROW OPEN\nSL " + str.tostring(slTry, "#.00") + "  C1 high " + str.tostring(c1High, "#.00") + "\nif tomorrow CLOSES below C1 high → SELL AT CLOSE\nelse hold 1:2", style=label.style_label_down, color=color.new(#1b5e20, 0), textcolor=color.white, size=size.small))
+            else
+                c1Bar := isC1(hunt.support) ? bar_index : na
+                c1High := not na(c1Bar) ? high : na
+                c1Low := not na(c1Bar) ? low : na
+        else
+            c1Bar := isC1(hunt.support) ? bar_index : na
+            c1High := not na(c1Bar) ? high : na
+            c1Low := not na(c1Bar) ? low : na
+    else if bar_index > c1Bar + 1
+        c1Bar := isC1(hunt.support) ? bar_index : na
+        c1High := not na(c1Bar) ? high : na
+        c1Low := not na(c1Bar) ? low : na
+
+bool scratchNow = false
+bool shiftNow = false
+string shiftTxt = ""
+
+if strategy.position_size > 0
+    pendingEntry := false
+    if na(entryBar)
+        entryBar := bar_index
+        entryPx := strategy.position_avg_price
+        float rsk = entryPx - slPx
+        tp2Px := entryPx + 2.0 * rsk
+        tpWork := tp2Px
+        workRR := 2
+        armed1R := false
+        upgradeDone := false
+        lastExit := ""
+        strategy.exit("X", "PP", stop=slPx, limit=tp2Px, comment_loss="SL", comment_profit="1:2")
+    bool isEntryBar = bar_index == entryBar
+    float rskNow = entryPx - slPx
+    float r1 = entryPx + rskNow
+    bool slHit = low <= (upgradeDone ? entryPx : slPx)
+    bool tpHit = high >= tpWork
+    bool entryScratch = isEntryBar and i_scratch and not slHit and not tpHit and close < c1High
+    if isEntryBar and slHit
+        lastExit := "SL"
+    else if isEntryBar and tpHit
+        lastExit := "1:2"
+    else if entryScratch
+        scratchNow := true
+        lastExit := "SCRATCH"
+        strategy.cancel("X")
+        strategy.close("PP", comment="SCRATCH sell at close")
+        pushLab(label.new(bar_index, close, "SCRATCH  close " + str.tostring(close, "#.00") + " < C1 high " + str.tostring(c1High, "#.00") + "\nSELL AT CLOSE", style=label.style_label_up, color=color.new(#b71c1c, 0), textcolor=color.white, size=size.small))
+    if not entryScratch and not slHit and not tpHit and not upgradeDone and high >= r1
+        armed1R := true
+        int k = stretchK()
+        float newTp = entryPx + float(k) * rskNow
+        workRR := k
+        float fromPx = tp2Px
+        tpWork := newTp
+        upgradeDone := true
+        lastShiftBar := bar_index
+        strategy.exit("X", "PP", stop=entryPx, limit=newTp, comment_loss="BE", comment_profit=(k > 2 ? "1:" + str.tostring(k) : "1:2"))
+        shiftNow := true
+        shiftTxt := k > 2 ? "SHIFT target FROM " + str.tostring(fromPx, "#.00") + " (1:2) TO " + str.tostring(newTp, "#.00") + " (1:" + str.tostring(k) + ") from next open  SL→BE " + str.tostring(entryPx, "#.00") : "KEEP target " + str.tostring(fromPx, "#.00") + " (1:2)  SL→BE " + str.tostring(entryPx, "#.00") + "  live SHIFT FROM/TO is on Swing_PP_RR.txt"
+        pushLab(label.new(bar_index, high, shiftTxt, style=label.style_label_down, color=color.new(#0d47a1, 0), textcolor=color.white, size=size.small))
+
+if strategy.position_size == 0 and not pendingEntry and not na(entryBar)
+    hunting := false
+    c1Bar := na
+    c1High := na
+    c1Low := na
+    entryBar := na
+    entryPx := na
+    tp2Px := na
+    tpWork := na
+    armed1R := false
+    upgradeDone := false
+
+int nDraw = array.size(levels)
+if nDraw > 0
+    for i = 0 to nDraw - 1
+        Level lv = array.get(levels, i)
+        if not na(lv.ln)
+            line.set_x2(lv.ln, bar_index)
+            if lv.gone
+                line.set_extend(lv.ln, extend.none)
+                line.set_style(lv.ln, line.style_dashed)
+                line.set_color(lv.ln, color.new(color.gray, 70))
+
+plot(strategy.position_size > 0 ? slPx : na, "SL", color=color.new(#e53935, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 ? c1High : na, "C1 high (scratch)", color=color.new(#ff9800, 0), style=plot.style_linebr, linewidth=1)
+plot(strategy.position_size > 0 ? tp2Px : na, "Target 1:2", color=color.new(#43a047, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 ? tpWork : na, "Working target", color=color.new(#00e5ff, 0), style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 ? entryPx : na, "Entry / BE after 1R", color=color.new(#bdbdbd, 0), style=plot.style_linebr, linewidth=1)
+
+plotshape(a1Now, title="A1 — enter next open", style=shape.triangleup, location=location.belowbar, color=color.new(#00c853, 0), size=size.small)
+plotshape(scratchNow, title="Scratch at close", style=shape.xcross, location=location.abovebar, color=color.new(#ff1744, 0), size=size.small)
+plotshape(shiftNow, title="SHIFT / KEEP after +1R", style=shape.diamond, location=location.abovebar, color=color.new(#40c4ff, 0), size=size.tiny)
+
+bgcolor(pendingEntry and bar_index == c1Bar + 1 ? color.new(#00c853, 88) : na, title="C2 A1 session")
+bgcolor(strategy.position_size > 0 and bar_index == entryBar ? color.new(#ff9800, 90) : na, title="Entry bar (scratch window)")
+
+var table how = table.new(position.top_right, 1, 12, bgcolor=color.new(#0b1220, 12), border_width=1, border_color=color.new(#90caf9, 40))
+
+if i_showHow and barstate.islast
+    string posLine = strategy.position_size > 0 ? "IN TRADE  qty " + str.tostring(strategy.position_size) + "  RR 1:" + str.tostring(workRR) : pendingEntry ? "ENTER NEXT OPEN" : hunting ? "Hunting C1 after " + hunt.tf + " sweep" : "No setup"
+    string tgtLine = strategy.position_size > 0 ? "Working TP " + str.tostring(tpWork, "#.00") + "  (1:2 was " + str.tostring(tp2Px, "#.00") + ")" : "—"
+    string slLine = strategy.position_size > 0 ? "SL " + str.tostring(upgradeDone ? entryPx : slPx, "#.00") + (upgradeDone ? " (BE)" : "") : not na(slPx) and pendingEntry ? "SL " + str.tostring(slPx, "#.00") : "—"
+    string c1Line = not na(c1High) ? "C1 high " + str.tostring(c1High, "#.00") + "  → close below = SELL AT CLOSE (entry bar only)" : "—"
+    string shLine = upgradeDone ? (workRR > 2 ? "SHIFT done FROM 1:2 TO 1:" + str.tostring(workRR) : "KEEP 1:2 — check Swing_PP_RR.txt") : strategy.position_size > 0 ? "After first +1R close: SHIFT FROM 1:2 TO 1:k next open" : ""
+    table.cell(how, 0, 0, "Swing_PP  " + syminfo.ticker, text_color=color.white, text_size=size.small, bgcolor=color.new(#1565c0, 0))
+    table.cell(how, 0, 1, posLine, text_color=color.white, text_size=size.small)
+    table.cell(how, 0, 2, "HOW TO TRADE", text_color=color.new(#80cbc4, 0), text_size=size.tiny)
+    table.cell(how, 0, 3, "NEW: ENTER tomorrow at that session's OPEN. Default 1:2.", text_color=color.new(#cfd8dc, 0), text_size=size.tiny)
+    table.cell(how, 0, 4, "Same bar: 1) SL  2) 1:2  3) else if CLOSE < C1 high → SELL AT CLOSE.", text_color=color.new(#cfd8dc, 0), text_size=size.tiny)
+    table.cell(how, 0, 5, "Do not hold overnight for the sweep stop after a failed reclaim.", text_color=color.new(#ffcc80, 0), text_size=size.tiny)
+    table.cell(how, 0, 6, "RUNNING: after first +1R close, SHIFT FROM 1:2 price TO 1:k from next open. SL→BE.", text_color=color.new(#cfd8dc, 0), text_size=size.tiny)
+    table.cell(how, 0, 7, "Live k: P6≥0.85→1:6 else P5≥0.85→1:5 else P3≥0.80→1:3 else KEEP 1:2.", text_color=color.new(#90caf9, 0), text_size=size.tiny)
+    table.cell(how, 0, 8, slLine, text_color=color.white, text_size=size.small)
+    table.cell(how, 0, 9, c1Line, text_color=color.new(#ffb74d, 0), text_size=size.tiny)
+    table.cell(how, 0, 10, tgtLine, text_color=color.new(#69f0ae, 0), text_size=size.small)
+    table.cell(how, 0, 11, shLine, text_color=color.new(#80d8ff, 0), text_size=size.tiny)
+
+alertcondition(a1Now, title="Swing_PP ENTER next OPEN", message="ENTER {{ticker}} tomorrow at OPEN. SL and C1 high are on the chart. If that session CLOSES below C1 high, SELL AT CLOSE. Else hold 1:2.")
+alertcondition(scratchNow, title="Swing_PP SCRATCH sell at close", message="SCRATCH {{ticker}}: this entry bar closed below C1 high — SELL AT CLOSE.")
+alertcondition(shiftNow, title="Swing_PP SHIFT / KEEP target", message="{{ticker}} +1R closed. SHIFT working target FROM 1:2 TO the 1:k on the chart from next open (or KEEP 1:2). SL→BE. Confirm k on Swing_PP_RR.txt.")
+
+if a1Now
+    alert("ENTER " + syminfo.ticker + " at OPEN  SL " + str.tostring(slPx, "#.00") + "  C1 high " + str.tostring(c1High, "#.00") + "  -> if tomorrow CLOSES below C1 high, SELL AT CLOSE  else hold 1:2", alert.freq_once_per_bar_close)
+if scratchNow
+    alert("SCRATCH " + syminfo.ticker + "  close " + str.tostring(close, "#.00") + " < C1 high " + str.tostring(c1High, "#.00") + "  SELL AT CLOSE", alert.freq_once_per_bar_close)
+if shiftNow
+    alert(shiftTxt, alert.freq_once_per_bar_close)
+
+if not timeframe.isdaily and barstate.islast
+    label.new(bar_index, high, "Use DAILY timeframe", color=color.red, textcolor=color.white)
