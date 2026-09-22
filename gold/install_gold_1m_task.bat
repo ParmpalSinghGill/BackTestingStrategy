@@ -1,6 +1,6 @@
 @echo off
 cd /d c:\DATA\CODE\Stocks\BackTest
-C:\Users\parmp\anaconda3\python.exe src\data_fetchers\install_autostart.py
+C:\Users\parmp\anaconda3\python.exe stock_market\run\install_autostart.py
 if errorlevel 1 (
   echo Autostart install had errors.
   pause

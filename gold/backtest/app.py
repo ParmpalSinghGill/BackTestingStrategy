@@ -27,7 +27,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-MARKET_ROOT = ROOT / "MARKET_DATA"
+MARKET_ROOT = ROOT / "data"
 FEED_STATE_FILE = MARKET_ROOT / "active_feed.json"
 DISPLAY_TZ = "Asia/Kolkata"
 COLUMNS = ["Datetime", "Open", "High", "Low", "Close", "Volume"]

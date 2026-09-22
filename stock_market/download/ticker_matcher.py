@@ -24,7 +24,7 @@ import pandas as pd
 from rapidfuzz import process, fuzz
 
 NSE_CSV_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 def _resolve_path(filename: str, fallback: str = None) -> str:

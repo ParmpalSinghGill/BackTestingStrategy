@@ -1,6 +1,10 @@
-"""Live Swing_PP RR: after the first +1R bar closes, maybe raise TP from next session.
+"""Live Swing_PP: C3-open fill, entry-bar scratch, next-bar RR after +1R close.
 
-Does not write Swing_low / Swing_Live. New entries stay 1:2 until this 1R close.
+Enter tomorrow at that session's open. Same bar: SL first, then 1:2, else if
+the session closes below C1 high sell at that close (scratch). After the first
++1R close (and not already 2R/SL/scratch), maybe raise TP from the next session.
+
+Does not write Swing_low / Swing_Live.
 """
 from __future__ import annotations
 
@@ -72,12 +76,16 @@ def add_pending_entries(book: list[dict], picked: pd.DataFrame, entry_d) -> list
                 "Entry_Price": None,
                 "SL_Price": float(rec["SL_Price"]),
                 "Support_Price": float(rec.get("Support_Price") or 0.0),
+                "C1_High": float(rec["C1_High"]) if rec.get("C1_High") not in (None, "") else None,
+                "C2_Close": float(rec["C2_Close"]) if rec.get("C2_Close") not in (None, "") else None,
                 "Liquidity_Type": rec.get("Liquidity_Type", "Weekly"),
                 "Liquidity_Date": rec.get("Liquidity_Date"),
                 "Meta_P": float(rec.get("Meta_P") or 0.0),
                 "ML_Score": float(rec.get("ML_Score") or 0.0),
                 "features": _feat_snapshot(rec),
                 "chosen_rr": 2,
+                "Target_Price_2": None,
+                "Target_Price": None,
                 "upgrade_done": False,
                 "status": "pending_entry",
             }
@@ -142,7 +150,30 @@ def inspect_asof(pos: dict, asof: pd.Timestamp) -> dict:
         return {"status": "closed", "note": "bad risk", "Entry_Price": entry}
     r1 = entry + risk
     r2 = entry + 2.0 * risk
+    c1_high = pos.get("C1_High")
+    try:
+        c1_high = float(c1_high) if c1_high not in (None, "") else None
+    except (TypeError, ValueError):
+        c1_high = None
     n = len(d)
+    o0, h0, l0, c0 = float(opens[idx]), float(highs[idx]), float(lows[idx]), float(closes[idx])
+    if l0 <= sl:
+        return {"status": "closed", "note": "SL", "Entry_Price": entry}
+    if h0 >= r2:
+        return {
+            "status": "closed",
+            "note": "1:2 filled on entry bar",
+            "Entry_Price": entry,
+        }
+    if c1_high is not None and c0 < c1_high:
+        return {
+            "status": "closed",
+            "note": "scratch: entry-bar close below C1 high — sell at close",
+            "Entry_Price": entry,
+            "Exit_Price": round(c0, 2),
+            "C1_High": c1_high,
+            "Close": round(c0, 2),
+        }
     armed_i = None
     for m in range(idx, n):
         o, h, l = float(opens[m]), float(highs[m]), float(lows[m])
@@ -151,14 +182,10 @@ def inspect_asof(pos: dict, asof: pd.Timestamp) -> dict:
                 return {"status": "closed", "note": "SL gap", "Entry_Price": entry}
             if l <= sl:
                 return {"status": "closed", "note": "SL", "Entry_Price": entry}
+            if h >= r2:
+                return {"status": "closed", "note": "1:2 filled", "Entry_Price": entry}
             if h >= r1:
                 armed_i = m
-                if h >= r2:
-                    return {
-                        "status": "closed",
-                        "note": "1:2 filled on 1R bar — no upgrade",
-                        "Entry_Price": entry,
-                    }
             continue
         if h >= r2:
             return {"status": "closed", "note": "1:2 filled", "Entry_Price": entry}
@@ -192,10 +219,11 @@ def _choose_from_p(p3, p5, p6) -> int:
     return int(ch.iloc[0])
 
 
-def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> tuple[list[dict], list[dict], list[dict]]:
-    """Returns (updated book, raise rows, 1R-keep rows)."""
+def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """Returns (updated book, raise rows, 1R-keep rows, entry-bar scratches)."""
     raises: list[dict] = []
     keeps: list[dict] = []
+    scratches: list[dict] = []
     out: list[dict] = []
     for pos in book:
         if pos.get("status") == "closed":
@@ -207,8 +235,25 @@ def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> 
         pos["status"] = info.get("status", pos.get("status"))
         pos["last_note"] = info.get("note", "")
         if pos["status"] == "closed":
+            if "scratch" in str(info.get("note", "")).lower():
+                scratches.append({
+                    "Ticker": pos["Ticker"],
+                    "Entry_Date": pos["Entry_Date"],
+                    "Entry_Price": pos.get("Entry_Price"),
+                    "C1_High": pos.get("C1_High") or info.get("C1_High"),
+                    "Close": info.get("Close") or info.get("Exit_Price"),
+                    "note": info.get("note", ""),
+                })
             out.append(pos)
             continue
+        if pos.get("Entry_Price") is not None and pos.get("SL_Price") is not None:
+            entry = float(pos["Entry_Price"])
+            sl = float(pos["SL_Price"])
+            risk = entry - sl
+            if risk > 0.05:
+                pos.setdefault("Target_Price_2", round(entry + 2.0 * risk, 2))
+                if not pos.get("Target_Price"):
+                    pos["Target_Price"] = pos["Target_Price_2"]
         if not info.get("can_upgrade") or pos.get("upgrade_done"):
             out.append(pos)
             continue
@@ -227,6 +272,8 @@ def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> 
         entry = float(pos["Entry_Price"])
         sl = float(pos["SL_Price"])
         risk = entry - sl
+        tp2 = round(entry + 2.0 * risk, 2)
+        tpk = round(entry + k * risk, 2)
         rec = {
             "Ticker": pos["Ticker"],
             "Entry_Date": pos["Entry_Date"],
@@ -234,12 +281,15 @@ def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> 
             "SL_Price": round(sl, 2),
             "BE": round(entry, 2),
             "chosen_rr": k,
-            "Target_Price": round(entry + k * risk, 2),
+            "Target_Price_2": tp2,
+            "Target_Price": tpk,
             **ps,
             "note": info.get("note", ""),
         }
         pos["upgrade_done"] = True
         pos["chosen_rr"] = k
+        pos["Target_Price_2"] = tp2
+        pos["Target_Price"] = tpk
         pos["p3_1r"] = ps["p3_1r"]
         pos["p5_1r"] = ps["p5_1r"]
         pos["p6_1r"] = ps["p6_1r"]
@@ -248,7 +298,7 @@ def scan_upgrades(book: list[dict], asof: pd.Timestamp, models: dict | None) -> 
         else:
             keeps.append(rec)
         out.append(pos)
-    return out, raises, keeps
+    return out, raises, keeps, scratches
 
 
 def load_rr_models(asof: pd.Timestamp) -> dict | None:

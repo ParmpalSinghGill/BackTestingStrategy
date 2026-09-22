@@ -4,9 +4,9 @@ Option Explicit
 Dim sh, pythonw, yahooScript, tvGoldScript, tvSilverScript, workdir
 workdir = "c:\DATA\CODE\Stocks\BackTest"
 pythonw = "C:\Users\parmp\anaconda3\pythonw.exe"
-yahooScript = workdir & "\src\data_fetchers\fetch_gold_1min.py"
-tvGoldScript = workdir & "\src\data_fetchers\fetch_vantage_gold.py"
-tvSilverScript = workdir & "\src\data_fetchers\fetch_vantage_silver.py"
+yahooScript = workdir & "\gold\fetch\fetch_gold_1min.py"
+tvGoldScript = workdir & "\gold\fetch\fetch_vantage_gold.py"
+tvSilverScript = workdir & "\gold\fetch\fetch_vantage_silver.py"
 
 Set sh = CreateObject("WScript.Shell")
 sh.CurrentDirectory = workdir

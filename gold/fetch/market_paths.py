@@ -4,27 +4,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-MARKET_DATA = REPO_ROOT / "MARKET_DATA"
+GOLD_ROOT = Path(__file__).resolve().parents[1]
+MARKET_DATA = GOLD_ROOT / "data"
 YAHOO_FINANCE_GOLD = MARKET_DATA / "Yahoo_Finance_Gold"
 TRADINGVIEW_VANTAGE_GOLD = MARKET_DATA / "TradingView_Vantage_Gold"
 TRADINGVIEW_VANTAGE_SILVER = MARKET_DATA / "TradingView_Vantage_Silver"
 
-README_TEXT = """MARKET_DATA
-===========
+README_TEXT = """gold/data
+========
 One folder for every local metal feed. Do not mix files between subfolders.
 
-MARKET_DATA/Yahoo_Finance_Gold
+gold/data/Yahoo_Finance_Gold
   Source: Yahoo Finance
   Symbol: GC=F
   What:   COMEX gold futures
 
-MARKET_DATA/TradingView_Vantage_Gold
+gold/data/TradingView_Vantage_Gold
   Source: TradingView Vantage
   Symbol: VANTAGE:XAUUSD
   What:   Spot gold vs USD
 
-MARKET_DATA/TradingView_Vantage_Silver
+gold/data/TradingView_Vantage_Silver
   Source: TradingView Vantage
   Symbol: VANTAGE:XAGUSD
   What:   Spot silver vs USD

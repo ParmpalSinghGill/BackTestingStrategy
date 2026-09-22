@@ -1,27 +1,24 @@
 """
 Daily Swing_PP entries: swing-low OPEN_BELOW + A1, M46 paper-gate book,
-plus next-bar RR after a +1R close.
+C3-close scratch, plus next-bar RR after a +1R close.
 
 Same liquidity scan as Swing_low. Then:
   liquidity age >= 1 month
   HGB + XGB meta trained on >=1m history
   Meta_P >= 0.48, daily top 16
   skip NEW entries if last 50 predicted paper results failed >= 74%
-  new names enter 1:2; after first +1R bar closes, maybe raise TP from next session
-  (P6>=0.85->1:6 else P5>=0.85->1:5 else P3>=0.80->1:3). No raise if that bar
-  already tagged 2R or SL.
+  ENTER next session at that session's OPEN
+  same bar: SL, else 1:2, else if close < C1 high SELL AT CLOSE (scratch)
+  after first +1R close, maybe SHIFT TP from 1:2 to 1:3/5/6 next session
+  (P6>=0.85->1:6 else P5>=0.85->1:5 else P3>=0.80->1:3)
 
 Writes (never touches Swing_low / Swing_Live):
   forecast_stocks/Swing_PP.txt
   forecast_stocks/Swing_PP_<DD_Mon_YYYY>.txt
   Watchlist/Swing_PP.txt
-  forecast_stocks/Swing_PP_RR.txt  (TP raises for next session)
+  forecast_stocks/Swing_PP_RR.txt  (SHIFT target FROM x TO y)
   Watchlist/Swing_PP_RR.txt
-
-Instruction file Swing_PP_ins.txt (forecast + Watchlist + dated copy):
-  Written when there is nothing NEW to enter (paper-gate skip, or no Meta_P names).
-  RR raises are still written to Swing_PP_RR.txt. Date and why are inside the ins file.
-  Ins is deleted only when new names are published.
+  Swing_PP_ins.txt always (how to enter, scratch, SHIFT) — not deleted when names publish
 """
 from __future__ import annotations
 
@@ -38,7 +35,7 @@ import pandas as pd
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent / "swing"
 sys.path.insert(0, str(BASE_DIR))
 
 from swing_strategy.run_daily_swing_forecast import (
@@ -83,6 +80,7 @@ def ins_paths(entry_day: datetime.date | None = None) -> list[Path]:
     paths = [
         FORECAST_DIR / INS_NAME,
         WATCHLIST_DIR / INS_NAME,
+        WATCHLIST_DIR / f"RAN_{INS_NAME}",
     ]
     if entry_day is not None:
         stamp = entry_day.strftime("%d_%b_%Y")
@@ -100,6 +98,7 @@ def write_watchlist(symbols: list[str], entry_day: datetime.date) -> None:
         FORECAST_DIR / f"{TAG}_{stamp}.txt",
         FORECAST_DIR / f"{TAG}.txt",
         WATCHLIST_DIR / f"{TAG}.txt",
+        WATCHLIST_DIR / f"RAN_{TAG}.txt",
     ]
     for path in paths:
         path.write_text(line, encoding="utf-8")
@@ -117,20 +116,22 @@ def write_rr(
     stamp = next_d.strftime("%d_%b_%Y")
     lines = [
         f"Swing_PP RR  asof {asof_d.isoformat()}  next session {next_d.isoformat()}",
-        "Rule: after first +1R close, new TP from next open. SL to breakeven (entry).",
-        "No raise if that 1R bar already hit 2R or SL. Default stays 1:2.",
-        f"Cuts: P6>=0.85 -> 1:6 else P5>=0.85 -> 1:5 else P3>=0.80 -> 1:3.",
+        "After first +1R close: SHIFT the working target from next open. SL to breakeven (entry).",
+        "No SHIFT if that 1R bar already hit 2R or SL, or if entry bar scratched (close < C1 high).",
+        "Cuts: P6>=0.85 -> 1:6 else P5>=0.85 -> 1:5 else P3>=0.80 -> 1:3 else stay 1:2.",
         "",
     ]
     if raises:
-        lines.append("RAISE TP next session:")
+        lines.append("SHIFT target next session (condition matched today: +1R close):")
         for r in raises:
             fy = to_fyers(str(r["Ticker"]))
+            k = int(r["chosen_rr"])
+            tp2 = float(r.get("Target_Price_2") or r["Target_Price"])
+            tpk = float(r["Target_Price"])
             lines.append(
-                f"  RAISE {fy:22s}  1:{int(r['chosen_rr'])}  "
-                f"P3={r['p3_1r']:.2f} P5={r['p5_1r']:.2f} P6={r['p6_1r']:.2f}  "
-                f"entry {r['Entry_Price']:.2f}  SL->BE {r['BE']:.2f}  "
-                f"TP {r['Target_Price']:.2f}"
+                f"  SHIFT {fy:22s}  target FROM {tp2:.2f} (1:2) TO {tpk:.2f} (1:{k})  "
+                f"because +1R closed today and P6={r['p6_1r']:.2f} P5={r['p5_1r']:.2f} P3={r['p3_1r']:.2f}  "
+                f"entry {r['Entry_Price']:.2f}  SL->BE {r['BE']:.2f}"
             )
     else:
         lines.append("No TP raises for next session.")
@@ -139,8 +140,13 @@ def write_rr(
         lines.append("1R close today — keep 1:2 (model below cut):")
         for r in keeps:
             fy = to_fyers(str(r["Ticker"]))
+            tp2 = float(r.get("Target_Price_2") or 0.0)
+            if tp2 <= 0:
+                entry = float(r["Entry_Price"])
+                sl = float(r["SL_Price"])
+                tp2 = round(entry + 2.0 * (entry - sl), 2)
             lines.append(
-                f"  KEEP  {fy:22s}  1:2  "
+                f"  KEEP  {fy:22s}  target stays {tp2:.2f} (1:2)  "
                 f"P3={r['p3_1r']:.2f} P5={r['p5_1r']:.2f} P6={r['p6_1r']:.2f}"
             )
     body = "\n".join(lines) + "\n"
@@ -148,6 +154,7 @@ def write_rr(
         FORECAST_DIR / f"{RR_TAG}_{stamp}.txt",
         FORECAST_DIR / f"{RR_TAG}.txt",
         WATCHLIST_DIR / f"{RR_TAG}.txt",
+        WATCHLIST_DIR / f"RAN_{RR_TAG}.txt",
     ]
     for path in paths:
         path.write_text(body, encoding="utf-8")
@@ -160,37 +167,101 @@ def write_ins(
     gate: dict,
     why: str,
     scored_lines: list[str],
+    picked: pd.DataFrame,
     rr_raises: list[dict] | None = None,
+    rr_keeps: list[dict] | None = None,
+    scratches: list[dict] | None = None,
 ) -> None:
     FORECAST_DIR.mkdir(parents=True, exist_ok=True)
     WATCHLIST_DIR.mkdir(parents=True, exist_ok=True)
     fail = gate.get("fail_pct")
     fail_s = "n/a" if fail is None else f"{fail:.1f}%"
     gate_line = (
-        f"SKIP (last {gate.get('need', ROLL_N)} paper results failed {fail_s}, "
+        f"SKIP new entries (last {gate.get('need', ROLL_N)} paper results failed {fail_s}, "
         f"threshold {FAIL_MAX * 100:.0f}%)"
         if gate.get("skip")
         else f"TRADE allowed (last {gate.get('ready')} paper results failed {fail_s}, skip if >= {FAIL_MAX * 100:.0f}%)"
     )
+    n_new = 0 if picked is None or picked.empty else len(picked)
     lines = [
-        "NO TRADE",
-        f"date: {entry_day.isoformat()}  ({entry_day.strftime('%d %b %Y')})",
-        f"asof: {asof_d.isoformat()}",
-        "code: ran",
+        "Swing_PP — session instructions",
+        f"next session (ENTER): {entry_day.isoformat()}  ({entry_day.strftime('%d %b %Y')})",
+        f"asof (last complete bar): {asof_d.isoformat()}",
         f"gate: {gate_line}",
         f"why: {why}",
+        "",
+        "HOW TO TRADE",
+        "  NEW names: ENTER tomorrow at that session's OPEN.",
+        "  Default target 1:2. SL = published sweep-to-C1 low x 0.99.",
+        "  Same session (entry bar) only, in this order:",
+        "    1) If SL trades -> out.",
+        "    2) If 1:2 trades -> out.",
+        "    3) Else if that session CLOSES below C1 high -> SELL AT CLOSE (scratch).",
+        "       Do not hold overnight for the sweep stop.",
+        "  RUNNING names: after first +1R close (and not already 2R/SL/scratch),",
+        "    SHIFT the working target FROM the 1:2 price TO the 1:k price from next open.",
+        "    Move SL to breakeven (entry). If the model is below the cut, KEEP 1:2.",
+        "",
     ]
-    if scored_lines:
-        lines.append("scored:")
-        lines.extend(f"  {s}" for s in scored_lines)
-    if rr_raises:
-        lines.append("RR raise next session (still manage open names):")
-        for r in rr_raises:
+    if gate.get("skip") or n_new == 0:
+        lines.append("NEW ENTRIES: NONE for tomorrow.")
+        if gate.get("skip"):
+            lines.append("  Paper-gate skip — do not enter new Swing_PP names this session.")
+        else:
+            lines.append("  No Meta_P names to publish.")
+        lines.append("")
+    else:
+        lines.append(f"NEW ENTRIES: ENTER AT TOMORROW OPEN  ({n_new} names)")
+        for rec in picked.to_dict("records"):
+            fy = to_fyers(str(rec["Ticker"]))
+            sl = float(rec.get("SL_Price") or 0.0)
+            c1 = rec.get("C1_High")
+            try:
+                c1s = f"{float(c1):.2f}" if c1 not in (None, "") else "?"
+            except (TypeError, ValueError):
+                c1s = "?"
             lines.append(
-                f"  RAISE {to_fyers(str(r['Ticker']))}  1:{int(r['chosen_rr'])}  "
-                f"TP {r['Target_Price']:.2f}"
+                f"  ENTER {fy:22s}  at OPEN  SL {sl:.2f}  "
+                f"C1 high {c1s}  -> if tomorrow CLOSES below C1 high, SELL AT CLOSE  "
+                f"else hold 1:2 (TP = open + 2*(open-SL))"
             )
-    lines.append("Do not enter NEW Swing_PP names this session.")
+        lines.append("")
+    if scratches:
+        lines.append("ENTRY-BAR SCRATCH (session just closed below C1 high — you should already be out at close):")
+        for r in scratches:
+            fy = to_fyers(str(r["Ticker"]))
+            c1 = r.get("C1_High")
+            cl = r.get("Close")
+            c1s = "?" if c1 in (None, "") else f"{float(c1):.2f}"
+            cls = "?" if cl in (None, "") else f"{float(cl):.2f}"
+            lines.append(f"  SCRATCH {fy:22s}  close {cls} < C1 high {c1s}  SELL AT CLOSE")
+        lines.append("")
+    if rr_raises:
+        lines.append("RUNNING — SHIFT target FROM x TO y (condition matched: +1R closed today):")
+        for r in rr_raises:
+            fy = to_fyers(str(r["Ticker"]))
+            k = int(r["chosen_rr"])
+            tp2 = float(r.get("Target_Price_2") or r["Target_Price"])
+            tpk = float(r["Target_Price"])
+            lines.append(
+                f"  SHIFT {fy:22s}  target FROM {tp2:.2f} (1:2) TO {tpk:.2f} (1:{k})  "
+                f"from next open  SL->BE {float(r['BE']):.2f}  "
+                f"P6={r['p6_1r']:.2f} P5={r['p5_1r']:.2f} P3={r['p3_1r']:.2f}"
+            )
+        lines.append("")
+    if rr_keeps:
+        lines.append("RUNNING — +1R closed today, KEEP 1:2 (model below cut):")
+        for r in rr_keeps:
+            fy = to_fyers(str(r["Ticker"]))
+            tp2 = float(r.get("Target_Price_2") or (float(r["Entry_Price"]) + 2.0 * (float(r["Entry_Price"]) - float(r["SL_Price"]))))
+            lines.append(
+                f"  KEEP  {fy:22s}  target stays {tp2:.2f} (1:2)  "
+                f"P6={r['p6_1r']:.2f} P5={r['p5_1r']:.2f} P3={r['p3_1r']:.2f}"
+            )
+        lines.append("")
+    if scored_lines:
+        lines.append("scored today:")
+        lines.extend(f"  {s}" for s in scored_lines)
     body = "\n".join(lines) + "\n"
     for path in ins_paths(entry_day):
         path.write_text(body, encoding="utf-8")
@@ -198,12 +269,8 @@ def write_ins(
 
 
 def delete_ins() -> None:
-    for path in ins_paths():
-        if path.exists():
-            path.unlink()
-            print(f"[ins] names to trade -> deleted {path}", flush=True)
-        else:
-            print(f"[ins] names to trade -> no {path} to delete", flush=True)
+    """Kept for manual cleanup. Daily job always rewrites ins; it is not deleted when names publish."""
+    return
 
 
 def resolve_asof(now: datetime, asof_arg: str) -> datetime.date:
@@ -327,6 +394,7 @@ def main() -> None:
         book = add_pending_entries(book, picked, entry_d)
     rr_raises: list[dict] = []
     rr_keeps: list[dict] = []
+    scratches: list[dict] = []
     models = None
     if book:
         try:
@@ -334,13 +402,14 @@ def main() -> None:
         except Exception as exc:
             print(f"[rr] models failed: {exc}", flush=True)
         try:
-            book, rr_raises, rr_keeps = scan_upgrades(book, asof, models)
+            book, rr_raises, rr_keeps, scratches = scan_upgrades(book, asof, models)
             book = [p for p in book if p.get("status") != "closed"]
         except Exception as exc:
             print(f"[rr] scan failed: {exc}", flush=True)
         save_open_book(book)
         print(
-            f"[rr] open-book {len(book)}  raise {len(rr_raises)}  keep-1:2 {len(rr_keeps)}",
+            f"[rr] open-book {len(book)}  SHIFT {len(rr_raises)}  keep-1:2 {len(rr_keeps)}  "
+            f"scratch {len(scratches)}",
             flush=True,
         )
     write_rr(rr_raises, rr_keeps, entry_d, asof_d)
@@ -351,13 +420,13 @@ def main() -> None:
             f"{gate.get('fail_pct')}% (threshold {FAIL_MAX * 100:.0f}%)"
         )
         write_watchlist([], entry_d)
-        write_ins(entry_d, asof_d, gate, why, scored_lines, rr_raises)
+        write_ins(entry_d, asof_d, gate, why, scored_lines, pd.DataFrame(), rr_raises, rr_keeps, scratches)
     elif not symbols:
         write_watchlist([], entry_d)
-        write_ins(entry_d, asof_d, gate, why, scored_lines, rr_raises)
+        write_ins(entry_d, asof_d, gate, why, scored_lines, pd.DataFrame(), rr_raises, rr_keeps, scratches)
     else:
         write_watchlist(symbols, entry_d)
-        delete_ins()
+        write_ins(entry_d, asof_d, gate, why, scored_lines, picked, rr_raises, rr_keeps, scratches)
 
     OUT.mkdir(parents=True, exist_ok=True)
     PICKS_LOG.write_text(
@@ -373,6 +442,7 @@ def main() -> None:
                 "scored": scored_lines,
                 "rr_raises": rr_raises,
                 "rr_keeps": rr_keeps,
+                "scratches": scratches,
             },
             indent=2,
             default=str,

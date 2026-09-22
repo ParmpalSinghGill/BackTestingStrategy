@@ -243,13 +243,14 @@ Downloads latest daily bars **once**, then scores all three books from that snap
 |------|---------|
 | `forecast_stocks/Swing_Live.txt` | Calendar Y/M/W min-low, Meta_P ≥ 0.38, top 32 |
 | `forecast_stocks/Swing_low.txt` | HTF swing-low, HGB meta ≥ 0.42, top 32 |
-| `forecast_stocks/Swing_PP.txt` | Same swing-low scan, ≥1m, Meta_P ≥ 0.48, top 16, paper-gate. New names **1:2**. |
-| `forecast_stocks/Swing_PP_RR.txt` | After a published name’s first **+1R close**: raise TP from **next** session if P6≥0.85 / P5≥0.85 / P3≥0.80. No raise if that bar already hit 2R or SL. |
+| `forecast_stocks/Swing_PP.txt` | Same swing-low scan, ≥1m, Meta_P ≥ 0.48, top 16, paper-gate. Enter **next open**. Scratch if that session **closes below C1 high**. New names **1:2**. |
+| `forecast_stocks/Swing_PP_RR.txt` | After a published name’s first **+1R close**: **SHIFT** target FROM the 1:2 price TO 1:3/5/6 from **next** session if P6≥0.85 / P5≥0.85 / P3≥0.80. No SHIFT if that bar already hit 2R, SL, or entry-bar scratch. |
+| `forecast_stocks/Swing_PP_ins.txt` | Always rewritten at 4pm: enter-tomorrow-at-open, C3-close scratch, and SHIFT FROM x TO y for running names. Not deleted when names publish. |
 
 - Before 16:00: last complete bar = previous trading day (do not use today’s partial candle).
 - At/after 16:00: last complete bar = today (weekday) or last weekday.
-- Watchlist copies: `C:\Users\parmp\Downloads\Watchlist\Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt`, `Swing_PP_RR.txt`.
-- If Swing_PP paper-gate skips the session, `Swing_PP_ins.txt` is written; if trading is allowed that file is deleted. RR raises still go to `Swing_PP_RR.txt`.
+- Watchlist copies: `C:\Users\parmp\Downloads\Watchlist\Swing_Live.txt`, `Swing_low.txt`, `Swing_PP.txt`, `Swing_PP_RR.txt`, `Swing_PP_ins.txt`.
+- Swing_PP `Swing_PP_ins.txt` is **always** written at 4pm (how to enter at next open, scratch if that close is below C1 high, SHIFT target FROM x TO y when +1R matches). Watchlist `Swing_PP.txt` stays Fyers symbols. RR SHIFTs also go to `Swing_PP_RR.txt`.
 - One-book scripts (`run_daily_swing_forecast.py`, `run_daily_swing_low_forecast.py`, `run_daily_swing_pp_forecast.py`) still exist for a manual rerun; pass `--skip-fetch` if data is already on disk.
 
 ---

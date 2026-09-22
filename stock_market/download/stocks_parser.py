@@ -22,9 +22,12 @@ import os
 import re
 from pathlib import Path
 
-from .ticker_matcher import match_ticker
+try:
+    from .ticker_matcher import match_ticker
+except ImportError:
+    from ticker_matcher import match_ticker
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 def _resolve_path(filename: str, fallback: str = None) -> str:

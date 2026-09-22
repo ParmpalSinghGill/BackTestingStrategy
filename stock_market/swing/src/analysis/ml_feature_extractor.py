@@ -1,7 +1,8 @@
 """
 Zero-Lookahead Feature Extractor for Machine Learning Confirmation Layer
 
-Extracts setup, market context, and historical candle features UP TO C1 (prior to C2 execution).
+Extracts setup, market context, historical candle features, and 4-horizon trend finder features UP TO C1 (prior to C2 execution).
+Includes 100-day lookback metrics and 6 trend finder methods across 5d, 20d, 50d, and 100d horizons.
 Strictly prevents any lookahead bias by omitting C2 OHLC/Close data.
 """
 
@@ -23,10 +24,61 @@ from src.backtest_engine.backtest_support_liquidity_strategy import (
     get_all_stock_supports,
     INDEX_CLASSIFIER,
 )
+from src.analysis.trend_finder import TrendFinder
 
 TIMEFRAME_RANK = {"Yearly": 3, "Monthly": 2, "Weekly": 1}
 NIFTY_RANK = {"Nifty 50": 4, "Nifty 100": 3, "Nifty 250": 2, "Other": 1}
 CANDLE_TYPE_RANK = {"Marubozu": 4, "Hammer": 3, "Bullish Engulfing": 2, "Standard Green": 1}
+
+
+def extract_trend_features_for_window(df_window: pd.DataFrame, window_size: int) -> dict:
+    if len(df_window) < 5:
+        return {
+            f"Trend_Score_{window_size}d": 0,
+            f"Trend_Confidence_{window_size}d": 0.0,
+            f"Supertrend_Sig_{window_size}d": 0,
+            f"ADX_{window_size}d": 0.0,
+            f"EMA_Slope_{window_size}d": 0.0,
+            f"LinReg_Slope_{window_size}d": 0.0,
+            f"Pivot_Bias_{window_size}d": 0,
+        }
+
+    st_p = max(2, min(10, window_size // 2))
+    adx_p = max(2, min(14, window_size // 2))
+    ema_f = max(2, min(20, max(2, window_size // 3)))
+    ema_m = max(3, min(50, max(3, window_size // 2)))
+    ema_s = max(5, min(200, window_size))
+    lr_w = min(len(df_window), window_size)
+
+    try:
+        finder = TrendFinder(
+            supertrend_period=st_p,
+            adx_period=adx_p,
+            ema_fast=ema_f,
+            ema_med=ema_m,
+            ema_slow=ema_s,
+            linreg_window=lr_w,
+        )
+        summary = finder.get_latest_summary(df_window)
+        return {
+            f"Trend_Score_{window_size}d": summary["Regime_Score"],
+            f"Trend_Confidence_{window_size}d": summary["Trend_Confidence_Pct"],
+            f"Supertrend_Sig_{window_size}d": 1 if summary["Supertrend_Signal"] == "Bullish" else -1,
+            f"ADX_{window_size}d": round(summary["ADX"], 2),
+            f"EMA_Slope_{window_size}d": round(summary["EMA_Fast_Slope_Angle"], 2),
+            f"LinReg_Slope_{window_size}d": round(summary["LinReg_Slope_Pct"], 4),
+            f"Pivot_Bias_{window_size}d": 1 if "Higher" in summary["Pivot_Structure"] else (-1 if "Lower" in summary["Pivot_Structure"] else 0),
+        }
+    except Exception:
+        return {
+            f"Trend_Score_{window_size}d": 0,
+            f"Trend_Confidence_{window_size}d": 0.0,
+            f"Supertrend_Sig_{window_size}d": 0,
+            f"ADX_{window_size}d": 0.0,
+            f"EMA_Slope_{window_size}d": 0.0,
+            f"LinReg_Slope_{window_size}d": 0.0,
+            f"Pivot_Bias_{window_size}d": 0,
+        }
 
 
 def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_str: str = "2010-01-01") -> list:
@@ -42,7 +94,7 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
     except Exception:
         return []
 
-    if len(df) < 60:
+    if len(df) < 110:
         return []
 
     idx_tag = INDEX_CLASSIFIER.classify(symbol)
@@ -55,7 +107,6 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
     highs = df["High"].to_numpy(float)
     lows = df["Low"].to_numpy(float)
     closes = df["Close"].to_numpy(float)
-    volumes = df["Volume"].to_numpy(float) if "Volume" in df.columns else np.zeros(len(df))
     n = len(df)
 
     sup_by_date = {}
@@ -98,12 +149,10 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                 tf_label = sup["timeframe"]
                 tf_rank = TIMEFRAME_RANK.get(tf_label, 1)
 
-                # Pre-sweep high runup
                 pre_high_idx = max(0, sweep_idx - 20)
                 pre_sweep_high = np.max(highs[pre_high_idx:sweep_idx]) if sweep_idx > pre_high_idx else highs[sweep_idx]
                 pre_sweep_runup_pct = ((pre_sweep_high - sup_price) / sup_price) * 100.0 if sup_price > 0 else 0.0
 
-                # Sweep depth
                 sweep_low = lows[sweep_idx]
                 sweep_depth_pct = ((sup_price - sweep_low) / sup_price) * 100.0 if sup_price > 0 else 0.0
 
@@ -116,7 +165,7 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                     elif closes[j] < opens[j]:
                         red_count_before_c1 += 1
 
-                if c1_idx is None or c1_idx < n_history_bars:
+                if c1_idx is None or c1_idx < 100:
                     continue
 
                 curr_c1_idx = c1_idx
@@ -166,7 +215,6 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                         else:
                             scenario = "Scenario 3 (Red & High > C1 High)"
 
-                        # We analyze Mode B (C1 High * 1.001) for Scenario 1
                         entry_price = c1_high * 1.001
                         sl_price = c1_low * 0.999
                         risk_per_share = entry_price - sl_price
@@ -180,7 +228,6 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
 
                         target_price = entry_price + 3.0 * risk_per_share
 
-                        # Outcome
                         outcome = "Pending"
                         exit_date = None
                         net_pnl = 0.0
@@ -214,7 +261,7 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                                 break
 
                         if outcome in ["Success", "Fail"]:
-                            # --- FEATURE ENGINEERING (NO LOOKAHEAD AT ALL) ---
+                            # --- FEATURE ENGINEERING (STRICT ZERO LOOKAHEAD UP TO C1) ---
                             prev_h = highs[curr_c1_idx - 1] if curr_c1_idx > 0 else None
                             prev_c = closes[curr_c1_idx - 1] if curr_c1_idx > 0 else None
                             c1_pattern = classify_c1_candle(c1_open, c1_high, c1_low, c1_close, prev_h, prev_c)
@@ -225,15 +272,23 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                             c1_lower_wick_pct = (min(c1_open, c1_close) - c1_low) / c1_open * 100.0 if c1_open > 0 else 0.0
                             c1_range_pct = (c1_high - c1_low) / c1_open * 100.0 if c1_open > 0 else 0.0
 
-                            # Volatility (ATR 20) up to C1
-                            atr_start = max(0, curr_c1_idx - 20)
-                            atr20 = np.mean(highs[atr_start:curr_c1_idx] - lows[atr_start:curr_c1_idx]) if curr_c1_idx > atr_start else 0.0
+                            # Volatility (ATR 20 and ATR 100)
+                            atr_start20 = max(0, curr_c1_idx - 20)
+                            atr20 = np.mean(highs[atr_start20:curr_c1_idx] - lows[atr_start20:curr_c1_idx]) if curr_c1_idx > atr_start20 else 0.0
                             atr20_pct = (atr20 / c1_close) * 100.0 if c1_close > 0 else 0.0
 
-                            # Distance to SMA 50
-                            sma_start = max(0, curr_c1_idx - 50)
-                            sma50 = np.mean(closes[sma_start:curr_c1_idx]) if curr_c1_idx > sma_start else c1_close
+                            atr_start100 = max(0, curr_c1_idx - 100)
+                            atr100 = np.mean(highs[atr_start100:curr_c1_idx] - lows[atr_start100:curr_c1_idx]) if curr_c1_idx > atr_start100 else 0.0
+                            atr100_pct = (atr100 / c1_close) * 100.0 if c1_close > 0 else 0.0
+
+                            # Distance to SMA 50 and SMA 100
+                            sma_start50 = max(0, curr_c1_idx - 50)
+                            sma50 = np.mean(closes[sma_start50:curr_c1_idx]) if curr_c1_idx > sma_start50 else c1_close
                             dist_sma50_pct = ((c1_close - sma50) / sma50) * 100.0 if sma50 > 0 else 0.0
+
+                            sma_start100 = max(0, curr_c1_idx - 100)
+                            sma100 = np.mean(closes[sma_start100:curr_c1_idx]) if curr_c1_idx > sma_start100 else c1_close
+                            dist_sma100_pct = ((c1_close - sma100) / sma100) * 100.0 if sma100 > 0 else 0.0
 
                             feat_dict = {
                                 "Ticker": symbol,
@@ -259,7 +314,9 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                                 "C1_Lower_Wick_Pct": round(c1_lower_wick_pct, 2),
                                 "C1_Range_Pct": round(c1_range_pct, 2),
                                 "ATR20_Pct": round(atr20_pct, 2),
+                                "ATR100_Pct": round(atr100_pct, 2),
                                 "Dist_SMA50_Pct": round(dist_sma50_pct, 2),
+                                "Dist_SMA100_Pct": round(dist_sma100_pct, 2),
                                 "C2_Date": c2_date.strftime("%Y-%m-%d"),
                                 "Scenario": scenario,
                                 "Entry_Price": round(entry_price, 2),
@@ -272,7 +329,14 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
                                 "Label": 1 if outcome == "Success" else 0,
                             }
 
-                            # Extract previous N historical candle features (prior to C1)
+                            # Multi-horizon 6 Trend Finder Features (5d, 20d, 50d, 100d)
+                            for w in [5, 20, 50, 100]:
+                                w_start = max(0, curr_c1_idx - w + 1)
+                                sub_slice = df.iloc[w_start : curr_c1_idx + 1]
+                                trend_feats = extract_trend_features_for_window(sub_slice, w)
+                                feat_dict.update(trend_feats)
+
+                            # Extract previous 5 historical candle features
                             for k_idx in range(1, n_history_bars + 1):
                                 h_bar = curr_c1_idx - k_idx
                                 b_open = opens[h_bar]
@@ -297,7 +361,7 @@ def extract_features_for_stock(symbol: str, n_history_bars: int = 5, start_date_
     return features_list
 
 
-def build_ml_dataset(n_history_bars: int = 5, max_workers: int = 12) -> pd.DataFrame:
+def build_ml_dataset(n_history_bars: int = 5, max_workers: int = 16) -> pd.DataFrame:
     csv_files = glob.glob(str(DATA_DAILY_DIR / "*_1d.csv"))
     symbols = []
     for f in csv_files:
@@ -310,7 +374,7 @@ def build_ml_dataset(n_history_bars: int = 5, max_workers: int = 12) -> pd.DataF
             name = name.replace("_", "=")
         symbols.append(name)
 
-    print(f"=== Extracting ML Features & Labels (N={n_history_bars} History Bars) ===")
+    print(f"=== Extracting Multi-Horizon Trend Features & Labels (5d, 20d, 50d, 100d) ===")
     print(f"Total Stocks: {len(symbols)}")
 
     all_features = []
@@ -320,16 +384,19 @@ def build_ml_dataset(n_history_bars: int = 5, max_workers: int = 12) -> pd.DataF
         future_map = {executor.submit(extract_features_for_stock, sym, n_history_bars, "2010-01-01"): sym for sym in symbols}
         for future in as_completed(future_map):
             completed += 1
+            if completed % 300 == 0 or completed == len(symbols):
+                print(f"Progress: {completed}/{len(symbols)} stocks processed...")
             res = future.result()
             if res:
                 all_features.extend(res)
 
-    df_ml = pd.DataFrame(all_features)
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    out_csv = REPORTS_DIR / "ML_Trade_Features_Dataset.csv"
-    df_ml.to_csv(out_csv, index=False)
-    print(f"Saved {len(df_ml):,} trade feature records to: {out_csv.resolve()}")
-    return df_ml
+    df_out = pd.DataFrame(all_features)
+    out_path = REPORTS_DIR / "Trend_Enhanced_ML_Trade_Features_Dataset.csv"
+    df_out.to_csv(out_path, index=False)
+    print(f"\nExtracted {len(df_out)} total trade feature records.")
+    print(f"Dataset exported to: {out_path.resolve()}")
+    return df_out
+
 
 if __name__ == "__main__":
-    build_ml_dataset(n_history_bars=5)
+    build_ml_dataset()

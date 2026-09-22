@@ -33,7 +33,7 @@ import pandas as pd
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent / "swing"
 sys.path.insert(0, str(BASE_DIR))
 
 from swing_strategy.run_c1_entry_sl_matrix import MAX_POST_SWEEP, START, _c1_match
@@ -48,7 +48,7 @@ from swing_strategy.tiered_liquidity_strategy_engine import (
 )
 from src.backtest_engine.backtest_support_liquidity_strategy import get_all_stock_supports
 
-FORECAST_DIR = BASE_DIR / "forecast_stocks"
+FORECAST_DIR = Path(__file__).resolve().parent / "output"
 WATCHLIST_DIR = Path(r"C:\Users\parmp\Downloads\Watchlist")
 LIVE_ML_DIR = BASE_DIR / "Reports" / "LiquidityFix_IntactSupport"
 FEAT_PATH = LIVE_ML_DIR / "Features_v6.parquet"
@@ -109,6 +109,7 @@ def fetch_latest() -> None:
     symbols = [s for s in get_all_tickers() if s and not s.endswith("=F")]
     print(f"[fetch] updating {len(symbols):,} daily files ...", flush=True)
     done = 0
+    skipped: list[str] = []
     from concurrent.futures import ThreadPoolExecutor, as_completed as tac
 
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -118,10 +119,18 @@ def fetch_latest() -> None:
             if done % 200 == 0 or done == len(symbols):
                 print(f"  fetch {done}/{len(symbols)}", flush=True)
             try:
-                fut.result()
-            except Exception:
-                pass
+                msg = str(fut.result() or "")
+            except Exception as exc:
+                msg = f"[ERROR] {futs[fut]}: {exc}"
+            if msg.startswith(("[SKIP]", "[EMPTY]", "[FAILED]", "[ERROR]")):
+                skipped.append(msg)
     print("[fetch] done", flush=True)
+    if skipped:
+        print(f"[fetch] {len(skipped)} tickers kept previous CSV (Yahoo empty/blocked):", flush=True)
+        for line in skipped[:12]:
+            print(f"  {line}", flush=True)
+        if len(skipped) > 12:
+            print(f"  ... {len(skipped) - 12} more", flush=True)
 
 
 def _pending_worker(payload: tuple) -> dict | None:
@@ -362,6 +371,7 @@ def write_txt(symbols: list[str], entry_day: datetime.date) -> None:
         FORECAST_DIR / f"Swing_Live_{stamp}.txt",
         FORECAST_DIR / "Swing_Live.txt",
         WATCHLIST_DIR / "Swing_Live.txt",
+        WATCHLIST_DIR / "RAN_Swing_Live.txt",
     ]
     for path in paths:
         path.write_text(line, encoding="utf-8")

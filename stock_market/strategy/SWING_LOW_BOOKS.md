@@ -183,7 +183,7 @@ Risk stays **2% of equity** (not 4%). Vol scale capped at 1.3×, rank at 1.2× (
 
 **Pause (fills — not for live):** 2 filled losses on the **same day** → sit out **8** days. You cannot run this without tracking fills.
 
-**Pause (predictions — use this):** every name on the daily Meta_P list is paper-scored 1:2 / SL / BE from prices, whether you bought it or not. If **≥ 74% of the last 50 completed paper results failed**, skip new entries that day. Scratches (BE) are ignored. Combined 4 PM job writes `Swing_PP.txt` (never `Swing_low` / `Swing_Live`). New names enter **1:2**. After the first **+1R bar closes**, `Swing_PP_RR.txt` may raise the working target from the **next** session (P6≥0.85→1:6 else P5≥0.85→1:5 else P3≥0.80→1:3). No raise if that 1R bar already tagged 2R or SL. `Swing_PP_ins.txt` is written when there is nothing **new** to enter (gate skip **or** no names), with the session date and why; it is deleted only when names are published.
+**Pause (predictions — use this):** every name on the daily Meta_P list is paper-scored 1:2 / SL / BE from prices, whether you bought it or not. If **≥ 74% of the last 50 completed paper results failed**, skip new entries that day. Scratches (BE) are ignored. Combined 4 PM job writes `Swing_PP.txt` (never `Swing_low` / `Swing_Live`). **Enter next session at the open.** Same bar: SL, else 1:2, else if the session **closes below C1 high** sell at that close (scratch; 24.7% DD accepted). After the first **+1R bar closes**, `Swing_PP_RR.txt` and `Swing_PP_ins.txt` **SHIFT** the working target FROM the 1:2 price TO 1:3/5/6 from the **next** session (P6≥0.85→1:6 else P5≥0.85→1:5 else P3≥0.80→1:3). No SHIFT if that 1R bar already tagged 2R/SL or the entry bar scratched. `Swing_PP_ins.txt` is always rewritten at 4pm (not deleted when names publish).
 
 | Book | Net CAGR | Max DD | Fills |
 |---|---:|---:|---:|
@@ -202,9 +202,9 @@ Same-bar “MFE≥1 so BE” without checking SL-first is **not** this book. ≥
 | `forecast_stocks/Swing_Live_<DD_Mon_YYYY>.txt` | Same, dated for the **entry** session (local only) | **Leave as-is** |
 | `forecast_stocks/Swing_low.txt` and `C:\Users\parmp\Downloads\Watchlist\Swing_low.txt` | Swing-low M2=2, HGB + meta t0.42 top 32 | This book |
 | `forecast_stocks/Swing_low_<DD_Mon_YYYY>.txt` | Same, dated for the **entry** session (local only) | This book |
-| `forecast_stocks/Swing_PP.txt` and `C:\Users\parmp\Downloads\Watchlist\Swing_PP.txt` | Swing-low scan, ≥1m, Meta_P ≥ 0.48 top 16, paper-gate. New names 1:2 | M46 / Swing_PP |
-| `forecast_stocks/Swing_PP_RR.txt` and Watchlist `Swing_PP_RR.txt` | After a published name’s first +1R close, raise TP from next session if the 1R model clears the cuts. No raise if that bar already hit 2R/SL | Swing_PP next-bar RR |
-| `forecast_stocks/Swing_PP_ins.txt` and Watchlist `Swing_PP_ins.txt` | Written when the job ran but there is **nothing new to enter** (paper-gate skip, or no Meta_P ≥ 0.48 names). Includes the entry date and why. Deleted only when names are published. RR raises still go to Swing_PP_RR.txt | M46 / Swing_PP |
+| `forecast_stocks/Swing_PP.txt` and `C:\Users\parmp\Downloads\Watchlist\Swing_PP.txt` | Swing-low scan, ≥1m, Meta_P ≥ 0.48 top 16, paper-gate. Enter next open. Scratch if that close < C1 high. New names 1:2 | M46 / Swing_PP |
+| `forecast_stocks/Swing_PP_RR.txt` and Watchlist `Swing_PP_RR.txt` | After a published name’s first +1R close, **SHIFT** target FROM 1:2 TO 1:k from next session if the 1R model clears the cuts | Swing_PP next-bar RR |
+| `forecast_stocks/Swing_PP_ins.txt` and Watchlist `Swing_PP_ins.txt` | Always rewritten at 4pm: enter tomorrow at open, C3-close scratch, SHIFT FROM x TO y. Not deleted when names publish | M46 / Swing_PP |
 
 Format (both families): `NSE:NIFTY50-INDEX,BSE:SENSEX-INDEX,NSE:RELIANCE-EQ,...`
 

@@ -1,5 +1,7 @@
 # Intraday Trading Strategy Suite (Subfolder Module)
 
+This is the 15-minute Indian stock study. It lives under the swing backtests. Overview: [stock market README](../../README.md). Gold is separate: [gold README](../../../gold/README.md).
+
 A dedicated Python quantitative trading suite designed for **Intraday Mean Reversion & Breakout Strategies** on Indian Equity markets (NSE/BSE).
 
 ---

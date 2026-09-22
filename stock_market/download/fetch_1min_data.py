@@ -19,6 +19,7 @@ import argparse
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
@@ -45,7 +46,7 @@ def symbols_from_stocks_file() -> list:
                 tickers.append(ticker)
     return tickers
 
-OUTPUT_DIR = "data"
+OUTPUT_DIR = str(Path(__file__).resolve().parents[1] / "data" / "minute")
 INTERVAL = "1m"
 MAX_CHUNK_DAYS = 7   # Yahoo's max span per 1m request
 

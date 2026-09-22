@@ -33,7 +33,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent / "swing"
 sys.path.insert(0, str(BASE_DIR))
 
 from src.backtest_engine.backtest_support_liquidity_strategy import (
@@ -66,7 +66,7 @@ from swing_strategy.tiered_liquidity_strategy_engine import (
     _load_daily,
 )
 
-FORECAST_DIR = BASE_DIR / "forecast_stocks"
+FORECAST_DIR = Path(__file__).resolve().parent / "output"
 WATCHLIST_DIR = Path(r"C:\Users\parmp\Downloads\Watchlist")
 FEAT_PATH = BASE_DIR / "Reports" / "SwingLowLiquidity_v2" / "Features_v6_M22.parquet"
 SCORED_PATH = BASE_DIR / "Reports" / "SwingLowCagrHunt" / "Scored_hgb.parquet"
@@ -205,6 +205,8 @@ def _swing_low_pending_worker(payload: tuple) -> dict | None:
                         "Liquidity_Date": liq_d.strftime("%Y-%m-%d"),
                         "C1_Date": pd.Timestamp(dates[c1]).strftime("%Y-%m-%d"),
                         "C2_Date": pd.Timestamp(dates[c2]).strftime("%Y-%m-%d"),
+                        "C1_High": round(float(highs[c1]), 2),
+                        "C2_Close": round(float(closes[c2]), 2),
                         "Entry_Price": entry_est,
                         "SL_Price": sl,
                         "c1": c1,
@@ -283,12 +285,14 @@ def write_txt(symbols: list[str], entry_day: datetime.date, min_age_months: int 
             FORECAST_DIR / f"{tag}_{stamp}.txt",
             FORECAST_DIR / f"{tag}.txt",
             WATCHLIST_DIR / f"{tag}.txt",
+            WATCHLIST_DIR / f"RAN_{tag}.txt",
         ]
     else:
         paths = [
             FORECAST_DIR / f"Swing_low_{stamp}.txt",
             FORECAST_DIR / "Swing_low.txt",
             WATCHLIST_DIR / "Swing_low.txt",
+            WATCHLIST_DIR / "RAN_Swing_low.txt",
         ]
     for path in paths:
         path.write_text(line, encoding="utf-8")

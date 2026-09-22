@@ -24,7 +24,7 @@ import pandas as pd
 
 DISPLAY_TZ = "Asia/Kolkata"
 XAUUSDT_DAILY_NAME = "Gold_Daily_XAUUSDT_UTC.csv"
-XAUUSDT_DAILY_PATH = Path(__file__).resolve().parents[1] / "MARKET_DATA" / "Yahoo_Finance_Gold" / XAUUSDT_DAILY_NAME
+XAUUSDT_DAILY_PATH = Path(__file__).resolve().parents[1] / "data" / "Yahoo_Finance_Gold" / XAUUSDT_DAILY_NAME
 TRIGGER_TOL = 0.0020
 WATCH_EXIT_DIST = 0.0040
 SESSION_ARM = 0.01

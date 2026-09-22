@@ -1,10 +1,12 @@
 # Indian NSE swing backtests
 
-Walk-forward XGBoost + meta-label on Indian cash equities (NSE/BSE). Gold / silver GUI is **not** this folder — that lives in the [root README](../README.md).
+The study has moved. Start at [the stock-market README](../../README.md). Forecasts are run from [forecast](../../forecast/README.md). This package is the daily-bar backtest code. Gold is [gold/README.md](../../../gold/README.md).
 
-Rules and **verified** net CAGRs: [strategy/BEST_STRATEGY.md](../strategy/BEST_STRATEGY.md).  
-Do-not-retry log: [strategy/TRIED_EXPERIMENTS.md](../strategy/TRIED_EXPERIMENTS.md).  
-Step-by-step: [strategy/ALGORITHM.md](../strategy/ALGORITHM.md).
+Walk-forward XGBoost + meta-label on Indian cash equities (NSE/BSE).
+
+Rules and **verified** net CAGRs: [strategy/BEST_STRATEGY.md](../../strategy/BEST_STRATEGY.md).  
+Do-not-retry log: [strategy/TRIED_EXPERIMENTS.md](../../strategy/TRIED_EXPERIMENTS.md).  
+Step-by-step: [strategy/ALGORITHM.md](../../strategy/ALGORITHM.md).
 
 Run every command from the **repo root** (`BackTestingStrategy/`), not from inside `swing_strategy/`.
 
@@ -16,15 +18,15 @@ pip install -r requirements.txt
 
 ## Daily names (what you run at 4 PM)
 
-Downloads daily bars **once**, then writes all forecast files:
+The weekday job is [stock_market/run/run_daily.py](../../run/run_daily.py): download once, then write the lists. Outputs land in [forecast/output](../../forecast/output). See [forecast/README.md](../../forecast/README.md).
 
 ```bash
-python swing_strategy/run_daily_all_forecasts.py
+python stock_market/run/run_daily.py
 ```
 
 Windows: `run_daily_all_forecasts.bat` (skips Saturday/Sunday).
 
-Outputs in `forecast_stocks/`:
+Outputs in `stock_market/forecast/output/`:
 
 | File | What it is |
 |---|---|
@@ -34,38 +36,38 @@ Outputs in `forecast_stocks/`:
 | `Swing_PP_RR.txt` | After a +1R close, SHIFT target from 1:2 to 1:k |
 | `Swing_PP_ins.txt` | Always rewritten: how to enter / scratch / SHIFT |
 
-Already have `data_daily/` up to date:
+Already have `stock_market/data/daily/` up to date:
 
 ```bash
-python swing_strategy/run_daily_all_forecasts.py --skip-fetch
+python stock_market/forecast/run_daily_all_forecasts.py --skip-fetch
 ```
 
 One book only (after a fetch):
 
 ```bash
-python swing_strategy/run_daily_swing_forecast.py --skip-fetch
-python swing_strategy/run_daily_swing_low_forecast.py --skip-fetch
-python swing_strategy/run_daily_swing_pp_forecast.py --skip-fetch
+python stock_market/forecast/run_daily_swing_forecast.py --skip-fetch
+python stock_market/forecast/run_daily_swing_low_forecast.py --skip-fetch
+python stock_market/forecast/run_daily_swing_pp_forecast.py --skip-fetch
 ```
 
 ---
 
 ## Refresh NSE daily bars only
 
-Writes `data_daily/<SYMBOL>_1d.csv` (gitignored). Must run as a module because of package imports:
+Writes `stock_market/data/daily/<SYMBOL>_1d.csv` (gitignored):
 
 ```bash
-python -m src.data_fetchers.fetch_daily_data
+python stock_market/download/fetch_daily_data.py
 ```
 
 ---
 
 ## Replay the live strategy (account statement)
 
-Same selector as [BEST_STRATEGY.md](../strategy/BEST_STRATEGY.md): OPEN_BELOW + A1, Meta_P ≥ 0.38, top 32, vol-managed 1:2. Needs the scored parquet already on disk (`Reports/LiquidityFix_IntactSupport/Scored_v6_meta.parquet`).
+Same selector as [BEST_STRATEGY.md](../../strategy/BEST_STRATEGY.md): OPEN_BELOW + A1, Meta_P ≥ 0.38, top 32, vol-managed 1:2. Needs the scored parquet already on disk (`stock_market/reports/LiquidityFix_IntactSupport/Scored_v6_meta.parquet`).
 
 ```bash
-python swing_strategy/run_live_account_statement.py
+python stock_market/swing/swing_strategy/run_live_account_statement.py
 ```
 
 Verified net (Zerodha, 2010-01-01 to 2026-08-28) — cite this table, not old README ML CAGRs:
@@ -83,9 +85,9 @@ Verified net (Zerodha, 2010-01-01 to 2026-08-28) — cite this table, not old RE
 Only if you need new walk-forward files. Order:
 
 ```bash
-python swing_strategy/run_ml_target_books.py
-python swing_strategy/run_ml_next_search.py
-python swing_strategy/run_ml_wave3.py
+python stock_market/swing/swing_strategy/run_ml_target_books.py
+python stock_market/swing/swing_strategy/run_ml_next_search.py
+python stock_market/swing/swing_strategy/run_ml_wave3.py
 ```
 
 `run_ml_wave4.py` is later experiments, **not** the live book.
@@ -95,7 +97,7 @@ python swing_strategy/run_ml_wave3.py
 ## Intraday (separate module)
 
 ```bash
-python intraday_strategy/run_strategy.py
+python stock_market/swing/intraday_strategy/run_strategy.py
 ```
 
 Details: [intraday_strategy/README.md](../intraday_strategy/README.md).

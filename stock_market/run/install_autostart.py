@@ -15,11 +15,11 @@ import winreg
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-TASK_DIR = BASE_DIR / "windows_tasks"
-GOLD_VBS = BASE_DIR / "run_fetch_gold_1m.vbs"
-CHART_VBS = BASE_DIR / "run_gold_chart_server.vbs"
-FORECAST_BAT = BASE_DIR / "run_daily_all_forecasts.bat"
-FORECAST_LOGON_BAT = BASE_DIR / "run_autostart_backtest.bat"
+TASK_DIR = Path(__file__).resolve().parent / "windows_tasks"
+GOLD_VBS = BASE_DIR / "gold" / "run_fetch_gold_1m.vbs"
+CHART_VBS = BASE_DIR / "gold" / "run_gold_chart_server.vbs"
+FORECAST_BAT = Path(__file__).resolve().parent / "run_daily_all_forecasts.bat"
+FORECAST_LOGON_BAT = Path(__file__).resolve().parent / "run_autostart_backtest.bat"
 
 GOLD_TASK = "StockBacktest_FetchGold1m"
 FORECAST_TASK = "StockBacktest_DailyForecast"
@@ -27,6 +27,9 @@ OLD_TASKS = (
     "StockBacktest_FetchGold1m_Logon",
     "StockBacktest_FetchGold1m_Evening",
     "StockBacktest_DailyForecast_Logon",
+    # Same 16:00 bat as DailyForecast. Leaving it enabled downloads 1D twice.
+    "StockBacktest_SwingForecast",
+    "StockBacktest_SwingLowForecast",
 )
 OLD_STARTUP_NAMES = (
     "StockBacktest_GoldFetchKeepalive.cmd",

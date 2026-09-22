@@ -1,16 +1,14 @@
-"""
-Main Entry Point: Daily (1d) Stock Data Downloader
+"""Daily downloader entry. The script lives in stock_market/download."""
 
-Executes src.data_fetchers.fetch_daily_data
-"""
-import sys
 from pathlib import Path
+import runpy
 
-BASE_DIR = Path(__file__).resolve().parent
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+_SCRIPT = Path(__file__).resolve().parents[3] / "download" / "fetch_daily_data.py"
 
-from src.data_fetchers.fetch_daily_data import main
+
+def main() -> None:
+    runpy.run_path(str(_SCRIPT), run_name="__main__")
+
 
 if __name__ == "__main__":
     main()

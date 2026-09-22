@@ -4,22 +4,22 @@ description: >-
   Use when generating, formatting, validating, or updating quantitative backtest account statements,
   Excel/CSV reports, master comparison tables, candlestick trade PNG plots with wick-preserving
   green/red entry/exit marker arrows, decreasing holding equity value tracking on sell exits,
-  or computing Before-Tax vs After-Tax Returns and CAGR. Always read Guide/OutputFormatGuide.md
+  or computing Before-Tax vs After-Tax Returns and CAGR. Always read stock_market/guide/OutputFormatGuide.md
   and enforce its checklist before saving or citing any report.
 ---
 
 # Backtest Output & Account Statement Skill
 
-**Source of truth:** [Guide/OutputFormatGuide.md](../../Guide/OutputFormatGuide.md)  
-**Companion guides:** [Guide/Account_Statement_guide.md](../../Guide/Account_Statement_guide.md), [Guide/Realistic_guide.md](../../Guide/Realistic_guide.md)
+**Source of truth:** [stock_market/guide/OutputFormatGuide.md](../../../stock_market/guide/OutputFormatGuide.md)
+**Companion guides:** [stock_market/guide/Account_Statement_guide.md](../../../stock_market/guide/Account_Statement_guide.md), [stock_market/guide/Realistic_guide.md](../../../stock_market/guide/Realistic_guide.md)
 
-When generating or reviewing backtest output, **read `Guide/OutputFormatGuide.md` first**, then apply every rule below. Do not cite CAGR, return %, or trade counts from saved reports until this checklist passes.
+When generating or reviewing backtest output, **read `stock_market/guide/OutputFormatGuide.md` first**, then apply every rule below. Do not cite CAGR, return %, or trade counts from saved reports until this checklist passes.
 
 ---
 
 ## 0. Pre-Flight (before running or trusting results)
 
-1. **Simulation engine** must follow all 8 rules in `Guide/Realistic_guide.md` (entries-first cash, gap fills, risk-cap sizing, taxes, walk-forward ML).
+1. **Simulation engine** must follow all 8 rules in `stock_market/guide/Realistic_guide.md` (entries-first cash, gap fills, risk-cap sizing, taxes, walk-forward ML).
 2. **Do not reuse stale `Reports/` files** — deleted or outdated reports must be regenerated; never copy archived numbers into new comparisons.
 3. **ML must actually filter** — if ML accepts >90% of raw Scenario-1 setups, raise `probability_threshold` or fix labels before reporting CAGR.
 4. **Dataset must exist** under `Reports/` (not only `Reports/OLD/`) with required columns: `Entry_Price_1to2`, `SL_Price_1to2`, `Target_Price_1to2`, `Target_Price_1to3`, `Exit_Date_1to2`, `Exit_Date_1to3`, `Outcome_1to2`, `Outcome_1to3`.
@@ -201,11 +201,11 @@ Use **Net Zerodha CAGR** as the primary reported CAGR unless user asks for gross
 
 | Task | Script |
 |------|--------|
-| Single backtest + statement | `python swing_strategy/run_strategy.py` |
-| Multi capital/risk matrix | `python swing_strategy/run_multi_experiments.py` |
-| Statement generator (core) | `swing_strategy/generate_statement.py` |
-| Trade PNG plots | `swing_strategy/plotter.py` |
-| Portfolio visualizations | `swing_strategy/visualizer.py` |
+| Single backtest + statement | `python stock_market/swing/swing_strategy/run_strategy.py` |
+| Multi capital/risk matrix | `python stock_market/swing/swing_strategy/run_multi_experiments.py` |
+| Statement generator (core) | `stock_market/swing/swing_strategy/generate_statement.py` |
+| Trade PNG plots | `stock_market/swing/swing_strategy/plotter.py` |
+| Portfolio visualizations | `stock_market/swing/swing_strategy/visualizer.py` |
 
 `generate_swing_strategy_statement()` parameters:
 - `initial_deposit` — starting capital (INR)

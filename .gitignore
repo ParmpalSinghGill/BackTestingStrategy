@@ -11,6 +11,14 @@ data_daily/
 GOLD_DATA/
 SILVER_DATA/
 MARKET_DATA/
+gold/data/
+stock_market/data/
+stock_market/reports/
+stock_market/swing/data
+stock_market/swing/data_daily
+stock_market/swing/Reports
+stock_market/swing/forecast_stocks
+stock_market/swing/catboost_info/
 scratch/
 EQUITY_L.csv
 Stocks.txt

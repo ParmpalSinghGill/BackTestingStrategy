@@ -509,7 +509,7 @@ def install_startup_cmd() -> bool:
     startup_dir.mkdir(parents=True, exist_ok=True)
     old_cmd = startup_dir / "run_fetch_gold_1m.cmd"
     old_cmd.unlink(missing_ok=True)
-    launcher = BASE_DIR / "run_fetch_gold_1m.vbs"
+    launcher = Path(__file__).resolve().parents[1] / "run_fetch_gold_1m.vbs"
     target = startup_dir / "run_fetch_gold_1m.vbs"
     target.write_text(
         'Set sh = CreateObject("WScript.Shell")\r\n'

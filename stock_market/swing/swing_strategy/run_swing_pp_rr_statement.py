@@ -109,6 +109,8 @@ def simulate_rr_book(
     end_dt: pd.Timestamp,
     closes: CloseCache,
     chart_rel_fn=None,
+    verbose: bool = True,
+    expand_daily: bool = True,
 ) -> dict:
     """Walk the RR book. Sizing uses cost-basis equity; statement cols 17-18 are MTM."""
     if chart_rel_fn is None:
@@ -273,19 +275,39 @@ def simulate_rr_book(
             recent.append(1 if won else 0)
 
         _snap(day)
-        if di % 500 == 0:
+        if verbose and di % 500 == 0:
             print(
                 f"  event day {di}/{len(event_days)} cash={cash:,.0f} open={len(open_pos)} skipd={skipped_days}",
                 flush=True,
             )
 
-    df_daily = expand_daily_mtm(snaps, start_dt, end_dt, closes)
     remaining_cost = sum(p["Total_Spend"] for p in open_pos.values())
     remaining_mtm = closes.holding_mtm(open_pos, end_dt)
-    net_z = round(float(df_daily["Balance"].iloc[-1]), 2)
+    if expand_daily:
+        df_daily = expand_daily_mtm(snaps, start_dt, end_dt, closes)
+        net_z = round(float(df_daily["Balance"].iloc[-1]), 2)
+        max_dd = max_drawdown_pct(df_daily["Balance"])
+    else:
+        event_bals = []
+        for s in snaps:
+            hold = round(
+                sum(q * closes.close_on(t, s["Date"], ep) for t, q, ep in s["Open"]),
+                2,
+            )
+            event_bals.append(round(float(s["Cash_Balance"]) + hold, 2))
+        net_z = round(cash + remaining_mtm, 2)
+        max_dd = max_drawdown_pct(event_bals)
+        df_daily = pd.DataFrame({
+            "Date": [pd.Timestamp(s["Date"]).strftime("%Y-%m-%d") for s in snaps],
+            "Balance": event_bals,
+            "Cash_Balance": [float(s["Cash_Balance"]) for s in snaps],
+            "Holding_Equity_Value": [
+                round(b - float(s["Cash_Balance"]), 2) for b, s in zip(event_bals, snaps)
+            ],
+            "Active_Positions": [int(s["Active_Positions"]) for s in snaps],
+        })
     net_f = round(net_z - (total_tax_f - total_tax_z), 2)
     gross_eq = round(CAPITAL + total_gross + (remaining_mtm - remaining_cost), 2)
-    max_dd = max_drawdown_pct(df_daily["Balance"])
     sells = [r for r in rows if r["Type"] == "SELL (EXIT)"]
     wins = sum(1 for r in sells if r["Net_PnL"] >= 0)
     win_rate = (wins / len(sells) * 100) if sells else 0.0

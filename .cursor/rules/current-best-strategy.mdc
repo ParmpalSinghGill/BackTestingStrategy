@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Current best strategy (verified 6 Sep 2026)
 
-Source of truth: `strategy/BEST_STRATEGY.md`. Do-not-retry log: `strategy/TRIED_EXPERIMENTS.md`.
+Source of truth: `stock_market/strategy/BEST_STRATEGY.md`. Do-not-retry log: `stock_market/strategy/TRIED_EXPERIMENTS.md`.
 
 **Do not cite as live results:** README ML CAGRs (+870% / +1952% / +2322%), Dynamic ML +35,840%, C1-submerged / User-Defined Pure / Confirmed / SwingNoMl (those lose after tax). Oracle / lookahead top-N by future R is a ceiling only. ₹2,800–₹4,000 risk 40%+ prints are the same selector with a larger risk cap, not the three target books.
 
