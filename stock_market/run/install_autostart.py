@@ -254,6 +254,127 @@ def _register_xml(task_name: str, xml_path: Path) -> bool:
     return True
 
 
+CHART_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Start the gold replay chart on port 8766 at sign-in.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT20S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{user_id}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>wscript.exe</Command>
+      <Arguments>//nologo //B "{chart_vbs}"</Arguments>
+      <WorkingDirectory>{workdir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+WATCH_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>If the gold chart on port 8766 is down, start it. Every 15 minutes, including after sign-in.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT45S</Delay>
+    </LogonTrigger>
+    <CalendarTrigger>
+      <Repetition>
+        <Interval>PT15M</Interval>
+        <Duration>P1D</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-09-17T00:04:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{user_id}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>wscript.exe</Command>
+      <Arguments>//nologo //B "{chart_vbs}"</Arguments>
+      <WorkingDirectory>{workdir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def _current_user_id() -> str:
+    completed = subprocess.run(
+        ["whoami", "/user", "/fo", "csv", "/nh"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    parts = [part.strip().strip('"') for part in (completed.stdout or "").split(",")]
+    sid = next((part for part in parts if part.startswith("S-1-")), "")
+    if sid:
+        return sid
+    return f"{os.environ.get('USERDOMAIN', '.')}\\{os.environ.get('USERNAME', '')}"
+
+
 def install_all() -> int:
     missing = [p for p in (GOLD_VBS, CHART_VBS, FORECAST_BAT, FORECAST_LOGON_BAT) if not p.exists()]
     if missing:
@@ -263,7 +384,7 @@ def install_all() -> int:
         return 1
 
     workdir = str(BASE_DIR)
-    user_id = f"{os.environ.get('USERDOMAIN', '.') }\\{os.environ.get('USERNAME', '')}".replace(" ", "")
+    user_id = _current_user_id()
     gold_xml = _write_xml(
         "fetch_gold.xml",
         GOLD_XML.format(gold_vbs=GOLD_VBS, workdir=workdir, user_id=user_id),
@@ -271,6 +392,14 @@ def install_all() -> int:
     forecast_xml = _write_xml(
         "daily_forecast.xml",
         FORECAST_XML.format(forecast_bat=FORECAST_BAT, workdir=workdir, user_id=user_id),
+    )
+    chart_xml = _write_xml(
+        "gold_chart.xml",
+        CHART_XML.format(chart_vbs=CHART_VBS, workdir=workdir, user_id=user_id),
+    )
+    watch_xml = _write_xml(
+        "gold_chart_watch.xml",
+        WATCH_XML.format(chart_vbs=CHART_VBS, workdir=workdir, user_id=user_id),
     )
 
     print("[autostart] Metals: Yahoo gold + Vantage gold/silver, hidden, startup + sign-in + every 6 hours")
@@ -284,47 +413,10 @@ def install_all() -> int:
         failed += 1
     if not _register_xml(FORECAST_TASK, forecast_xml):
         failed += 1
-
-    chart_cmd = [
-        "schtasks",
-        "/Create",
-        "/TN",
-        "StockBacktest_GoldChart",
-        "/TR",
-        f'wscript.exe //nologo //B "{CHART_VBS}"',
-        "/SC",
-        "ONLOGON",
-        "/F",
-        "/IT",
-    ]
-    chart = subprocess.run(chart_cmd, capture_output=True, text=True)
-    if chart.returncode != 0:
-        print(f"[autostart] WARN StockBacktest_GoldChart: {(chart.stderr or chart.stdout).strip()}")
-    else:
-        print("[autostart] OK StockBacktest_GoldChart (at sign-in)")
-
-    watch = subprocess.run(
-        [
-            "schtasks",
-            "/Create",
-            "/TN",
-            "StockBacktest_GoldChart_Watch",
-            "/TR",
-            f'wscript.exe //nologo //B "{CHART_VBS}"',
-            "/SC",
-            "MINUTE",
-            "/MO",
-            "15",
-            "/F",
-            "/IT",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if watch.returncode != 0:
-        print(f"[autostart] WARN StockBacktest_GoldChart_Watch: {(watch.stderr or watch.stdout).strip()}")
-    else:
-        print("[autostart] OK StockBacktest_GoldChart_Watch (every 15 min)")
+    if not _register_xml("StockBacktest_GoldChart", chart_xml):
+        failed += 1
+    if not _register_xml("StockBacktest_GoldChart_Watch", watch_xml):
+        failed += 1
 
     install_startup_cmds()
     try:
