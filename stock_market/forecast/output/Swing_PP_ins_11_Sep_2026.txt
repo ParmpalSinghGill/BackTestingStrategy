@@ -1,0 +1,25 @@
+NO TRADE
+date: 2026-09-11  (11 Sep 2026)
+asof: 2026-09-10
+code: ran
+gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
+why: 17 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
+scored:
+  drop AAKASH.NS         Meta_P 0.440  liq 2026-07-03  Weekly
+  drop EMAMIREAL.NS      Meta_P 0.378  liq 2026-06-05  Weekly
+  drop POWERGRID.NS      Meta_P 0.374  liq 2026-04-03  Weekly
+  drop PRITI.NS          Meta_P 0.372  liq 2026-05-15  Weekly
+  drop LAXMIDENTL.NS     Meta_P 0.350  liq 2026-06-12  Weekly
+  drop EXCELSOFT.NS      Meta_P 0.347  liq 2026-07-03  Weekly
+  drop ISGEC.NS          Meta_P 0.346  liq 2026-04-03  Weekly
+  drop ERIS.NS           Meta_P 0.339  liq 2026-05-22  Weekly
+  drop JKLAKSHMI.NS      Meta_P 0.334  liq 2026-04-03  Weekly
+  drop ASIANPAINT.NS     Meta_P 0.328  liq 2026-07-17  Weekly
+  drop ICICIAMC.NS       Meta_P 0.320  liq 2026-05-22  Weekly
+  drop INDOWIND.NS       Meta_P 0.319  liq 2026-05-15  Weekly
+  drop IREDA.NS          Meta_P 0.318  liq 2026-06-12  Weekly
+  drop HINDPETRO.NS      Meta_P 0.313  liq 2026-06-12  Weekly
+  drop UNIINFO.NS        Meta_P 0.310  liq 2026-07-10  Weekly
+  drop VGL.NS            Meta_P 0.307  liq 2026-05-29  Weekly
+  drop SWANCORP.NS       Meta_P 0.165  liq 2026-04-03  Weekly
+Do not enter Swing_PP names this session.

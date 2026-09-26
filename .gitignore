@@ -34,3 +34,10 @@ Plots/
 !gold_chart/docs/
 !gold_chart/docs/*.png
 *.html
+
+# Local secrets (Discord webhook for Swing_PP)
+stock_market/forecast/discord_webhook.url
+
+# Lock files & temporary state
+*.lock
+

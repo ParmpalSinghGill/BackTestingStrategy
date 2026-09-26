@@ -1,0 +1,30 @@
+NO TRADE
+date: 2026-09-10  (10 Sep 2026)
+asof: 2026-09-09
+code: ran
+gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
+why: 22 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
+scored:
+  drop ORCHASP.NS        Meta_P 0.441  liq 2026-04-10  Weekly
+  drop TRU.NS            Meta_P 0.421  liq 2026-03-31  Monthly
+  drop WEBELSOLAR.NS     Meta_P 0.412  liq 2026-05-22  Weekly
+  drop NTPC.NS           Meta_P 0.397  liq 2026-07-17  Weekly
+  drop ADANIPOWER.NS     Meta_P 0.393  liq 2026-05-15  Weekly
+  drop CUMMINSIND.NS     Meta_P 0.371  liq 2026-07-10  Weekly
+  drop ADANIPORTS.NS     Meta_P 0.364  liq 2026-07-03  Weekly
+  drop STYRENIX.NS       Meta_P 0.361  liq 2026-06-12  Weekly
+  drop ATGL.NS           Meta_P 0.354  liq 2026-06-19  Weekly
+  drop SJVN.NS           Meta_P 0.351  liq 2026-06-12  Weekly
+  drop MEDPLUS.NS        Meta_P 0.343  liq 2025-04-30  Monthly
+  drop COALINDIA.NS      Meta_P 0.342  liq 2026-04-10  Weekly
+  drop MURUDCERA.NS      Meta_P 0.340  liq 2026-05-15  Weekly
+  drop LFIC.NS           Meta_P 0.327  liq 2026-05-22  Weekly
+  drop TATAPOWER.NS      Meta_P 0.326  liq 2026-04-03  Weekly
+  drop ANMOL.NS          Meta_P 0.324  liq 2026-06-26  Weekly
+  drop GKWLIMITED.NS     Meta_P 0.323  liq 2026-07-31  Weekly
+  drop INOXWIND.NS       Meta_P 0.312  liq 2026-06-12  Weekly
+  drop ASTEC.NS          Meta_P 0.310  liq 2026-05-22  Weekly
+  drop CESC.NS           Meta_P 0.301  liq 2026-07-17  Weekly
+  drop SUVIDHAA.NS       Meta_P 0.293  liq 2026-06-19  Weekly
+  drop TCC.NS            Meta_P 0.279  liq 2026-05-22  Weekly
+Do not enter Swing_PP names this session.

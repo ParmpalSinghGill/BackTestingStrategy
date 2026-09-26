@@ -1,0 +1,6 @@
+Swing_PP RR  asof 2026-09-17  next session 2026-09-18
+After first +1R close: SHIFT the working target from next open. SL to breakeven (entry).
+No SHIFT if that 1R bar already hit 2R or SL, or if entry bar scratched (close < C1 high).
+Cuts: P6>=0.85 -> 1:6 else P5>=0.85 -> 1:5 else P3>=0.80 -> 1:3 else stay 1:2.
+
+No TP raises for next session.

@@ -1,0 +1,35 @@
+Swing_PP — session instructions
+next session (ENTER): 2026-09-14  (14 Sep 2026)
+asof (last complete bar): 2026-09-11
+gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
+why: 13 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
+
+HOW TO TRADE
+  NEW names: ENTER tomorrow at that session's OPEN.
+  Default target 1:2. SL = published sweep-to-C1 low x 0.99.
+  Same session (entry bar) only, in this order:
+    1) If SL trades -> out.
+    2) If 1:2 trades -> out.
+    3) Else if that session CLOSES below C1 high -> SELL AT CLOSE (scratch).
+       Do not hold overnight for the sweep stop.
+  RUNNING names: after first +1R close (and not already 2R/SL/scratch),
+    SHIFT the working target FROM the 1:2 price TO the 1:k price from next open.
+    Move SL to breakeven (entry). If the model is below the cut, KEEP 1:2.
+
+NEW ENTRIES: NONE for tomorrow.
+  No Meta_P names to publish.
+
+scored today:
+  drop RATEGAIN.NS       Meta_P 0.424  liq 2026-07-24  Weekly
+  drop LIBAS.NS          Meta_P 0.406  liq 2026-05-22  Weekly
+  drop COMPINFO.NS       Meta_P 0.367  liq 2026-05-29  Weekly
+  drop BOHRAIND.NS       Meta_P 0.364  liq 2026-01-23  Weekly
+  drop DAVANGERE.NS      Meta_P 0.362  liq 2025-12-26  Weekly
+  drop DIGISPICE.NS      Meta_P 0.362  liq 2026-05-22  Weekly
+  drop LOTUSEYE.NS       Meta_P 0.359  liq 2026-07-03  Weekly
+  drop SCHAND.NS         Meta_P 0.334  liq 2026-06-12  Weekly
+  drop JAIPURKURT.NS     Meta_P 0.314  liq 2026-05-22  Weekly
+  drop VOLTAS.NS         Meta_P 0.305  liq 2025-08-15  Weekly
+  drop HDFCLIFE.NS       Meta_P 0.305  liq 2026-04-03  Weekly
+  drop BLUESTARCO.NS     Meta_P 0.300  liq 2026-06-05  Weekly
+  drop VGL.NS            Meta_P 0.212  liq 2026-05-29  Weekly

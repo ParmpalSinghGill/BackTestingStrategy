@@ -25,6 +25,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
+import urllib.request
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, time
 from pathlib import Path
@@ -74,6 +76,7 @@ ROLL_N = 50
 FAIL_MAX = 0.74
 OUT = BASE_DIR / "Reports" / "SwingLow_OldLiquidity"
 PICKS_LOG = OUT / "Swing_PP_last.json"
+WEBHOOK_FILE = Path(__file__).resolve().parent / "discord_webhook.url"
 
 
 def ins_paths(entry_day: datetime.date | None = None) -> list[Path]:
@@ -268,6 +271,59 @@ def write_ins(
         print(f"[ins] {path}", flush=True)
 
 
+def notify_discord(picked: pd.DataFrame, entry_day: datetime.date) -> None:
+    """Post new Swing_PP names. No message when the list is empty."""
+    if picked is None or picked.empty:
+        print("[discord] no names — skip", flush=True)
+        return
+    try:
+        url = WEBHOOK_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        url = ""
+    if not url.startswith("https://discord.com/api/webhooks/"):
+        print("[discord] webhook file missing — skip", flush=True)
+        return
+    lines = [
+        f"Swing_PP — enter {entry_day.strftime('%d %b %Y')} at the open ({len(picked)} names)",
+        "",
+    ]
+    for rec in picked.to_dict("records"):
+        fy = to_fyers(str(rec["Ticker"]))
+        sl = float(rec.get("SL_Price") or 0.0)
+        c1 = rec.get("C1_High")
+        try:
+            c1s = f"{float(c1):.2f}" if c1 not in (None, "") else "?"
+        except (TypeError, ValueError):
+            c1s = "?"
+        try:
+            meta = f"{float(rec.get('Meta_P')):.3f}"
+        except (TypeError, ValueError):
+            meta = "?"
+        lines.append(f"{fy}  SL {sl:.2f}  C1 high {c1s}  Meta_P {meta}")
+    lines.append("")
+    lines.append("Same session: SL, else 1:2, else if close is below C1 high sell at that close.")
+    content = "\n".join(lines)
+    if len(content) > 1900:
+        content = content[:1890].rstrip() + "\n…"
+    body = json.dumps({"content": content}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "SwingPP (daily forecast)",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            print(f"[discord] sent {len(picked)} names  HTTP {resp.status}", flush=True)
+    except urllib.error.HTTPError as exc:
+        print(f"[discord] failed HTTP {exc.code}", flush=True)
+    except Exception as exc:
+        print(f"[discord] failed: {exc}", flush=True)
+
+
 def delete_ins() -> None:
     """Kept for manual cleanup. Daily job always rewrites ins; it is not deleted when names publish."""
     return
@@ -427,6 +483,7 @@ def main() -> None:
     else:
         write_watchlist(symbols, entry_d)
         write_ins(entry_d, asof_d, gate, why, scored_lines, picked, rr_raises, rr_keeps, scratches)
+        notify_discord(picked, entry_d)
 
     OUT.mkdir(parents=True, exist_ok=True)
     PICKS_LOG.write_text(

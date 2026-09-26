@@ -1,0 +1,524 @@
+{
+  "capital": 10000.0,
+  "cash": 3972.985595,
+  "size_pct": 100.0,
+  "leverage": 100.0,
+  "slippage_pct": 0.002,
+  "taker_fee_pct": 0.01,
+  "gst_pct": 18.0,
+  "next_id": 48,
+  "next_txn_id": 103,
+  "open": [],
+  "markers": [
+    {
+      "time": 1787562480,
+      "buy": false,
+      "text": "S",
+      "price": 4696.1063
+    },
+    {
+      "time": 1787564820,
+      "buy": true,
+      "text": "X",
+      "price": 4700.564
+    },
+    {
+      "time": 1787565060,
+      "buy": false,
+      "text": "S",
+      "price": 4698.6062
+    },
+    {
+      "time": 1787565540,
+      "buy": true,
+      "text": "X",
+      "price": 4702.164
+    },
+    {
+      "time": 1787617980,
+      "buy": false,
+      "text": "S",
+      "price": 4744.9051
+    },
+    {
+      "time": 1787618220,
+      "buy": true,
+      "text": "X",
+      "price": 4751.005
+    },
+    {
+      "time": 1787618760,
+      "buy": false,
+      "text": "S",
+      "price": 4748.6052
+    },
+    {
+      "time": 1787618820,
+      "buy": true,
+      "text": "X",
+      "price": 4747.2949
+    },
+    {
+      "time": 1787619120,
+      "buy": false,
+      "text": "S",
+      "price": 4745.9051
+    },
+    {
+      "time": 1787619180,
+      "buy": true,
+      "text": "X",
+      "price": 4744.5049
+    },
+    {
+      "time": 1789719240,
+      "buy": false,
+      "text": "S",
+      "price": 4430.4114
+    },
+    {
+      "time": 1789724460,
+      "buy": true,
+      "text": "X",
+      "price": 4419.6885
+    },
+    {
+      "time": 1789724460,
+      "buy": true,
+      "text": "X",
+      "price": 4419.6885
+    },
+    {
+      "time": 1789719240,
+      "buy": true,
+      "text": "B",
+      "price": 4430.5886
+    },
+    {
+      "time": 1789719600,
+      "buy": false,
+      "text": "X",
+      "price": 4432.7111
+    },
+    {
+      "time": 1787619060,
+      "buy": false,
+      "text": "S",
+      "price": 4747.305
+    },
+    {
+      "time": 1787619120,
+      "buy": true,
+      "text": "X",
+      "price": 4746.5949
+    },
+    {
+      "time": 1787619420,
+      "buy": false,
+      "text": "S",
+      "price": 4745.4051
+    },
+    {
+      "time": 1787619480,
+      "buy": true,
+      "text": "X",
+      "price": 4743.2949
+    },
+    {
+      "time": 1787619660,
+      "buy": false,
+      "text": "S",
+      "price": 4731.8053
+    },
+    {
+      "time": 1787619720,
+      "buy": true,
+      "text": "X",
+      "price": 4731.6946
+    },
+    {
+      "time": 1787620020,
+      "buy": false,
+      "text": "S",
+      "price": 4734.6055
+    },
+    {
+      "time": 1787619360,
+      "buy": true,
+      "text": "X",
+      "price": 4744.5949
+    },
+    {
+      "time": 1787619480,
+      "buy": false,
+      "text": "S",
+      "price": 4745.305
+    },
+    {
+      "time": 1787619540,
+      "buy": true,
+      "text": "X",
+      "price": 4738.5448
+    },
+    {
+      "time": 1787619540,
+      "buy": false,
+      "text": "S",
+      "price": 4740.9052
+    },
+    {
+      "time": 1787622480,
+      "buy": true,
+      "text": "X",
+      "price": 4731.2046
+    },
+    {
+      "time": 1787636280,
+      "buy": false,
+      "text": "S",
+      "price": 4700.3059
+    },
+    {
+      "time": 1787637960,
+      "buy": true,
+      "text": "X",
+      "price": 4703.0241
+    },
+    {
+      "time": 1787638620,
+      "buy": false,
+      "text": "S",
+      "price": 4704.1061
+    },
+    {
+      "time": 1787639280,
+      "buy": true,
+      "text": "X",
+      "price": 4709.5742
+    },
+    {
+      "time": 1787664480,
+      "buy": true,
+      "text": "B",
+      "price": 4672.3932
+    },
+    {
+      "time": 1787665620,
+      "buy": false,
+      "text": "X",
+      "price": 4662.7867
+    },
+    {
+      "time": 1787672820,
+      "buy": false,
+      "text": "S",
+      "price": 4709.106
+    },
+    {
+      "time": 1787677860,
+      "buy": true,
+      "text": "X",
+      "price": 4691.71
+    },
+    {
+      "time": 1787685180,
+      "buy": false,
+      "text": "S",
+      "price": 4717.4056
+    },
+    {
+      "time": 1787685480,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685540,
+      "buy": true,
+      "text": "X",
+      "price": 4723.9944
+    },
+    {
+      "time": 1787685540,
+      "buy": true,
+      "text": "X",
+      "price": 4723.9944
+    },
+    {
+      "time": 1787685540,
+      "buy": true,
+      "text": "X",
+      "price": 4723.9944
+    },
+    {
+      "time": 1787685600,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685600,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685600,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685600,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685600,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6946
+    },
+    {
+      "time": 1787685960,
+      "buy": false,
+      "text": "S",
+      "price": 4717.9056
+    },
+    {
+      "time": 1787686980,
+      "buy": true,
+      "text": "X",
+      "price": 4719.7144
+    },
+    {
+      "time": 1787688780,
+      "buy": false,
+      "text": "S",
+      "price": 4724.3054
+    },
+    {
+      "time": 1787691540,
+      "buy": true,
+      "text": "X",
+      "price": 4715.9942
+    },
+    {
+      "time": 1787696160,
+      "buy": true,
+      "text": "X",
+      "price": 4722.6245
+    },
+    {
+      "time": 1787701620,
+      "buy": true,
+      "text": "B",
+      "price": 4715.1944
+    },
+    {
+      "time": 1787702280,
+      "buy": false,
+      "text": "X",
+      "price": 4710.7258
+    },
+    {
+      "time": 1787704020,
+      "buy": true,
+      "text": "B",
+      "price": 4703.3939
+    },
+    {
+      "time": 1787704560,
+      "buy": false,
+      "text": "X",
+      "price": 4699.286
+    },
+    {
+      "time": 1787706180,
+      "buy": true,
+      "text": "B",
+      "price": 4698.3938
+    },
+    {
+      "time": 1787707980,
+      "buy": false,
+      "text": "X",
+      "price": 4697.1261
+    },
+    {
+      "time": 1787710260,
+      "buy": false,
+      "text": "S",
+      "price": 4715.0058
+    },
+    {
+      "time": 1787711460,
+      "buy": true,
+      "text": "X",
+      "price": 4719.2044
+    },
+    {
+      "time": 1787732640,
+      "buy": true,
+      "text": "B",
+      "price": 4682.0936
+    },
+    {
+      "time": 1787735940,
+      "buy": false,
+      "text": "X",
+      "price": 4676.6365
+    },
+    {
+      "time": 1787738640,
+      "buy": false,
+      "text": "S",
+      "price": 4679.5065
+    },
+    {
+      "time": 1787740620,
+      "buy": true,
+      "text": "X",
+      "price": 4676.8135
+    },
+    {
+      "time": 1787746140,
+      "buy": false,
+      "text": "S",
+      "price": 4682.9063
+    },
+    {
+      "time": 1787747220,
+      "buy": true,
+      "text": "X",
+      "price": 4686.2637
+    },
+    {
+      "time": 1787752920,
+      "buy": false,
+      "text": "S",
+      "price": 4678.9064
+    },
+    {
+      "time": 1787756580,
+      "buy": true,
+      "text": "X",
+      "price": 4655.8929
+    },
+    {
+      "time": 1787757720,
+      "buy": true,
+      "text": "X",
+      "price": 4648.4929
+    },
+    {
+      "time": 1787782620,
+      "buy": true,
+      "text": "X",
+      "price": 4665.0333
+    },
+    {
+      "time": 1787824320,
+      "buy": true,
+      "text": "B",
+      "price": 4638.3926
+    },
+    {
+      "time": 1787824680,
+      "buy": false,
+      "text": "X",
+      "price": 4632.5073
+    },
+    {
+      "time": 1787825160,
+      "buy": true,
+      "text": "B",
+      "price": 4627.0925
+    },
+    {
+      "time": 1787827200,
+      "buy": false,
+      "text": "X",
+      "price": 4628.9074
+    },
+    {
+      "time": 1787839080,
+      "buy": true,
+      "text": "B",
+      "price": 4626.6926
+    },
+    {
+      "time": 1787839200,
+      "buy": false,
+      "text": "X",
+      "price": 4622.5975
+    },
+    {
+      "time": 1787845560,
+      "buy": false,
+      "text": "S",
+      "price": 4655.6071
+    },
+    {
+      "time": 1787845980,
+      "buy": true,
+      "text": "X",
+      "price": 4660.7232
+    },
+    {
+      "time": 1787846760,
+      "buy": false,
+      "text": "S",
+      "price": 4661.607
+    },
+    {
+      "time": 1787848080,
+      "buy": true,
+      "text": "X",
+      "price": 4662.6033
+    },
+    {
+      "time": 1787849220,
+      "buy": false,
+      "text": "S",
+      "price": 4665.1069
+    },
+    {
+      "time": 1787849520,
+      "buy": true,
+      "text": "X",
+      "price": 4669.4734
+    }
+  ],
+  "last_closed": {
+    "id": 47,
+    "side": "SHORT",
+    "entryTime": 1787849220,
+    "exitTime": 1787849520,
+    "entryFill": 4665.1069,
+    "exitFill": 4669.4734,
+    "quantity": 95.198,
+    "reason": "SL",
+    "pnl": -520.5396,
+    "exits": [
+      {
+        "date": "2026-08-27",
+        "timeIst": "22:22:00",
+        "time": 1787849520,
+        "signal": 4669.38,
+        "fill": 4669.4734,
+        "qty": 95.198,
+        "reason": "SL",
+        "charges": 52.453894,
+        "fee": 44.452453,
+        "gst": 8.001441,
+        "gross": -415.6809,
+        "slipCost": 17.7723,
+        "released": 4441.0885
+      }
+    ]
+  },
+  "tp_price": null,
+  "sl_price": 4497.81
+}

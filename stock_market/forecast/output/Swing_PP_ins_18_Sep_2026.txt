@@ -1,0 +1,76 @@
+Swing_PP — session instructions
+next session (ENTER): 2026-09-18  (18 Sep 2026)
+asof (last complete bar): 2026-09-17
+gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
+why: 54 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
+
+HOW TO TRADE
+  NEW names: ENTER tomorrow at that session's OPEN.
+  Default target 1:2. SL = published sweep-to-C1 low x 0.99.
+  Same session (entry bar) only, in this order:
+    1) If SL trades -> out.
+    2) If 1:2 trades -> out.
+    3) Else if that session CLOSES below C1 high -> SELL AT CLOSE (scratch).
+       Do not hold overnight for the sweep stop.
+  RUNNING names: after first +1R close (and not already 2R/SL/scratch),
+    SHIFT the working target FROM the 1:2 price TO the 1:k price from next open.
+    Move SL to breakeven (entry). If the model is below the cut, KEEP 1:2.
+
+NEW ENTRIES: NONE for tomorrow.
+  No Meta_P names to publish.
+
+scored today:
+  drop SHYAMTEL.NS       Meta_P 0.471  liq 2026-06-19  Weekly
+  drop ADANIPOWER.NS     Meta_P 0.461  liq 2026-05-15  Weekly
+  drop APTECHT.NS        Meta_P 0.448  liq 2026-05-22  Weekly
+  drop SALONA.NS         Meta_P 0.435  liq 2026-05-01  Weekly
+  drop DPWIRES.NS        Meta_P 0.432  liq 2026-07-24  Weekly
+  drop GREENPLY.NS       Meta_P 0.429  liq 2026-08-14  Weekly
+  drop JITFINFRA.NS      Meta_P 0.410  liq 2026-04-03  Weekly
+  drop DEEDEV.NS         Meta_P 0.410  liq 2026-07-24  Weekly
+  drop PHOENIXLTD.NS     Meta_P 0.396  liq 2026-08-14  Weekly
+  drop BHARATWIRE.NS     Meta_P 0.390  liq 2026-06-12  Weekly
+  drop ANIKINDS.NS       Meta_P 0.384  liq 2026-05-22  Weekly
+  drop ADANIPORTS.NS     Meta_P 0.384  liq 2026-07-03  Weekly
+  drop SEPC.NS           Meta_P 0.384  liq 2026-06-12  Weekly
+  drop RSSOFTWARE.NS     Meta_P 0.374  liq 2026-05-15  Weekly
+  drop TATACONSUM.NS     Meta_P 0.373  liq 2026-04-30  Monthly
+  drop ASIANPAINT.NS     Meta_P 0.373  liq 2026-07-17  Weekly
+  drop WEALTH.NS         Meta_P 0.364  liq 2026-05-22  Weekly
+  drop ITCHOTELS.NS      Meta_P 0.361  liq 2026-07-24  Weekly
+  drop NTPCGREEN.NS      Meta_P 0.357  liq 2026-07-31  Weekly
+  drop JKLAKSHMI.NS      Meta_P 0.354  liq 2026-04-03  Weekly
+  drop DHANUKA.NS        Meta_P 0.354  liq 2026-06-12  Weekly
+  drop ITC.NS            Meta_P 0.348  liq 2026-06-05  Weekly
+  drop LCCINFOTEC.NS     Meta_P 0.342  liq 2025-07-31  Monthly
+  drop NBCC.NS           Meta_P 0.341  liq 2026-05-22  Weekly
+  drop SWSOLAR.NS        Meta_P 0.339  liq 2026-07-24  Weekly
+  drop LEMONTREE.NS      Meta_P 0.337  liq 2026-05-22  Weekly
+  drop NATHBIOGEN.NS     Meta_P 0.335  liq 2026-05-22  Weekly
+  drop STARHEALTH.NS     Meta_P 0.334  liq 2026-08-14  Weekly
+  drop MALLCOM.NS        Meta_P 0.333  liq 2026-05-29  Weekly
+  drop TECHNOE.NS        Meta_P 0.332  liq 2026-07-31  Weekly
+  drop DLF.NS            Meta_P 0.332  liq 2026-07-24  Weekly
+  drop CIEINDIA.NS       Meta_P 0.330  liq 2026-03-20  Weekly
+  drop INDIASHLTR.NS     Meta_P 0.328  liq 2026-06-12  Weekly
+  drop AADHARHFC.NS      Meta_P 0.319  liq 2026-07-31  Weekly
+  drop GREENLAM.NS       Meta_P 0.319  liq 2026-07-24  Weekly
+  drop EIHAHOTELS.NS     Meta_P 0.317  liq 2026-06-12  Weekly
+  drop SEJALLTD.NS       Meta_P 0.311  liq 2026-07-10  Weekly
+  drop ASTERDM.NS        Meta_P 0.311  liq 2026-07-03  Weekly
+  drop VHLTD.NS          Meta_P 0.306  liq 2026-03-27  Weekly
+  drop JKCEMENT.NS       Meta_P 0.305  liq 2026-07-10  Weekly
+  drop BGRENERGY.NS      Meta_P 0.301  liq 2026-04-30  Monthly
+  drop CUMMINSIND.NS     Meta_P 0.301  liq 2026-07-10  Weekly
+  drop BLUESTARCO.NS     Meta_P 0.300  liq 2026-06-05  Weekly
+  drop STARCEMENT.NS     Meta_P 0.299  liq 2026-04-03  Weekly
+  drop IMFA.NS           Meta_P 0.294  liq 2026-07-24  Weekly
+  drop CEATLTD.NS        Meta_P 0.294  liq 2026-07-24  Weekly
+  drop ACCURACY.NS       Meta_P 0.291  liq 2026-05-08  Weekly
+  drop ICICIPRULI.NS     Meta_P 0.287  liq 2026-06-30  Monthly
+  drop BEL.NS            Meta_P 0.277  liq 2026-01-23  Weekly
+  drop RAMASTEEL.NS      Meta_P 0.276  liq 2026-05-22  Weekly
+  drop MFSL.NS           Meta_P 0.256  liq 2025-08-08  Weekly
+  drop SBILIFE.NS        Meta_P 0.252  liq 2025-07-18  Weekly
+  drop HDFCLIFE.NS       Meta_P 0.251  liq 2026-04-03  Weekly
+  drop SBGLP.NS          Meta_P 0.248  liq 2026-06-05  Weekly
