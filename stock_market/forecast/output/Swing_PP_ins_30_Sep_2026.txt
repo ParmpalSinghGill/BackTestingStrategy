@@ -1,8 +1,8 @@
 Swing_PP — session instructions
-next session (ENTER): 2026-09-29  (29 Sep 2026)
-asof (last complete bar): 2026-09-28
+next session (ENTER): 2026-09-30  (30 Sep 2026)
+asof (last complete bar): 2026-09-29
 gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
-why: no pending swing-low A1 setups
+why: 1 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
 
 HOW TO TRADE
   NEW names: ENTER tomorrow at that session's OPEN.
@@ -19,3 +19,8 @@ HOW TO TRADE
 NEW ENTRIES: NONE for tomorrow.
   No Meta_P names to publish.
 
+RUNNING — +1R closed today, KEEP 1:2 (model below cut):
+  KEEP  NSE:ESSARSHPNG-EQ       target stays 18.69 (1:2)  P6=0.08 P5=0.08 P3=0.10
+
+scored today:
+  drop KRIDHANINF.NS     Meta_P 0.306  liq 2026-03-31  Monthly

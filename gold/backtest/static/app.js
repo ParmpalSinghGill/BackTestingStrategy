@@ -778,6 +778,88 @@ function eventPassesMin(item) {
   return rank >= (EVENT_MIN_RANK[eventMinTf] || 1);
 }
 
+function getEventSide(evt) {
+  if (!evt) return "";
+  if (evt.side === "High" || evt.side === "Low") return evt.side;
+  if (evt.type === "resistance") return "High";
+  if (evt.type === "support") return "Low";
+  const name = String(evt.level || evt.name || "");
+  if (/high|pdh|resistance/i.test(name)) return "High";
+  if (/low|pdl|support/i.test(name)) return "Low";
+  return "";
+}
+
+function formatEventLevelName(evt) {
+  if (!evt) return "";
+  const side = getEventSide(evt);
+  const tf = evt.timeframe || "";
+
+  if (tf === "PrevDay" || /PrevDay/i.test(evt.level || "")) {
+    if (side === "High") return "Prev Day High (PDH)";
+    if (side === "Low") return "Prev Day Low (PDL)";
+    return "Prev Day Level";
+  }
+
+  if (tf === "Today" || /Today/i.test(evt.level || "")) {
+    if (side === "High") return "Today's High";
+    if (side === "Low") return "Today's Low";
+    return "Today's Level";
+  }
+
+  if (evt.level && !/^(PrevDay|Today|Hourly|Daily|Weekly|Monthly)$/i.test(evt.level)) {
+    return evt.level;
+  }
+
+  const kindStr = side === "High" ? "Resistance" : side === "Low" ? "Support" : "Level";
+  return `${tf} ${kindStr}`;
+}
+
+function formatEventFullTitle(evt) {
+  if (!evt) return "";
+  const statusText = evt.status === "TOUCH" ? "Touch" : evt.status === "NEAR" ? "Near" : (evt.status || "");
+  const levelName = formatEventLevelName(evt);
+  return `${statusText} ${levelName}`.trim();
+}
+
+function isEventActive(evt, currentTime = replayTime) {
+  if (!evt || !currentTime) return false;
+  const evtTime = Number(evt.time);
+  if (!Number.isFinite(evtTime) || currentTime < evtTime) return false;
+
+  const tf = evt.timeframe || "";
+  const levelStr = evt.level || "";
+  const isHourly = tf === "Hourly" || /hourly/i.test(levelStr);
+  const isPrevDay = tf === "PrevDay" || /prevday/i.test(levelStr);
+  const isToday = tf === "Today" || /today/i.test(levelStr);
+  const isDaily = tf === "Daily" || /daily/i.test(levelStr);
+
+  if (isHourly) {
+    // Expire 1 hour (3600s) after event trigger time
+    return currentTime < evtTime + 3600;
+  }
+
+  if (isPrevDay || isToday || isDaily) {
+    const evtDay = utcSessionDate(evtTime);
+    const currentDay = utcSessionDate(currentTime);
+    if (evtDay === currentDay) return true;
+
+    // Grace period: expire 2 hours (7200s) past end of event's UTC session day
+    const evtSessionEnd = (Math.floor(evtTime / 86400) + 1) * 86400;
+    const graceExpiry = evtSessionEnd + 7200;
+    return currentTime < graceExpiry;
+  }
+
+  if (tf === "Weekly") {
+    return currentTime < evtTime + 7 * 86400;
+  }
+
+  if (tf === "Monthly") {
+    return currentTime < evtTime + 30 * 86400;
+  }
+
+  return currentTime < evtTime + 86400;
+}
+
 function navigationEvents() {
   const byTime = new Map();
   chartEvents.forEach((evt) => {
@@ -792,8 +874,13 @@ function eventAtOrBeforeReplay() {
   const list = navigationEvents();
   let found = null;
   for (const evt of list) {
-    if (evt.time <= replayTime) found = evt;
-    else break;
+    if (evt.time <= replayTime) {
+      if (isEventActive(evt, replayTime)) {
+        found = evt;
+      }
+    } else {
+      break;
+    }
   }
   return found;
 }
@@ -891,6 +978,7 @@ function isEventLabelLive(lab, price, session, hourlyFrom) {
   if (Number.isFinite(ready) && ready > replayTime) return false;
   if (cancel != null && Number.isFinite(cancel) && cancel <= replayTime) return false;
   if (lab.hourly && source < hourlyFrom) return false;
+  if (lab.timeframe === "PrevDay" && utcSessionDate(ready) !== utcSessionDate(replayTime)) return false;
   const level = Number(lab.price);
   if (!Number.isFinite(level) || level <= 0) return false;
   if (lab.type === "resistance") {
@@ -1021,12 +1109,14 @@ function updateEventHud(evt = null) {
     hud.textContent = "No events in local market data";
     return;
   }
-  if (!shown) {
-    hud.textContent = `${list.length} events · next ${next ? next.level : "—"}`;
+  if (!shown || !isEventActive(shown, replayTime)) {
+    const nextLabel = next ? formatEventFullTitle(next) : "—";
+    hud.textContent = `${list.length} events · next ${nextLabel}`;
     return;
   }
+  const fullTitle = formatEventFullTitle(shown);
   hud.textContent =
-    `${shown.status} ${shown.level} @ ${Number(shown.price).toFixed(2)}` +
+    `${fullTitle} @ ${Number(shown.price).toFixed(2)}` +
     ` · ${list.length} events`;
 }
 
@@ -1041,17 +1131,18 @@ function clearEventGuide() {
 }
 
 function showEventGuide(evt) {
-  if (!eventsEnabled || !evt) {
+  if (!eventsEnabled || !evt || !isEventActive(evt, replayTime)) {
     clearEventGuide();
     return;
   }
+  const title = formatEventFullTitle(evt);
   const options = {
     price: evt.price,
     color: eventColor(evt),
     lineWidth: 1,
     lineStyle: LightweightCharts.LineStyle.Dashed,
     axisLabelVisible: true,
-    title: `${evt.status} ${evt.timeframe}`,
+    title,
   };
   if (eventGuideLine) {
     eventGuideLine.applyOptions(options);
@@ -1403,8 +1494,9 @@ function formatSigned(value, digits) {
 function updateOhlc(bar) {
   if (!bar) return;
   const candleColor = bar.close >= bar.open ? "#26a69a" : "#ef5350";
+  const digits = feedUnit === "XAG" ? 3 : 2;
   for (const [id, key] of [["o", "open"], ["h", "high"], ["l", "low"], ["c", "close"]]) {
-    const text = Number(bar[key]).toFixed(2);
+    const text = Number(bar[key]).toFixed(digits);
     const header = document.getElementById(id);
     const legend = document.getElementById(`l${id}`);
     if (header) {
@@ -3117,6 +3209,24 @@ function applyFeedMeta(payload) {
   }
   if (loadingEl) loadingEl.textContent = `Loading local ${name} candles…`;
   document.title = `${name} Replay Chart`;
+  const precision = feedUnit === "XAG" ? 3 : 2;
+  const minMove = feedUnit === "XAG" ? 0.001 : 0.01;
+  try {
+    candleSeries.applyOptions({
+      priceFormat: {
+        type: "price",
+        precision: precision,
+        minMove: minMove,
+      },
+    });
+    chart.applyOptions({
+      localization: {
+        priceFormatter: (price) => Number(price).toFixed(precision),
+      },
+    });
+  } catch {
+    /* ignore if series not ready */
+  }
   fillFeedSelect(payload);
 }
 
@@ -3221,10 +3331,19 @@ function focusReplayWindow(bars = 220) {
 
 function switchTimeframe(timeframe) {
   if (timeframe === currentTimeframe) return;
+  const previousRange = chart.timeScale().getVisibleRange();
   applyTimeframe(timeframe);
   saveReplayCursor();
-  renderChart();
-  snapToReplayWindow();
+  renderChart({ preserveRange: true });
+  if (followHead) {
+    snapToReplayWindow();
+  } else if (previousRange && previousRange.from != null && previousRange.to != null) {
+    try {
+      chart.timeScale().setVisibleRange(previousRange);
+    } catch {
+      snapToReplayWindow();
+    }
+  }
 }
 
 let overlayLeft = 0;
@@ -3485,6 +3604,19 @@ function screenPoint(point) {
   return x == null || y == null ? null : { x, y };
 }
 
+function logicalToScreenCoordinate(logical) {
+  if (logical == null) return null;
+  const base = Math.floor(logical);
+  const frac = logical - base;
+  if (frac === 0) {
+    return chart.timeScale().logicalToCoordinate(base);
+  }
+  const c0 = chart.timeScale().logicalToCoordinate(base);
+  const c1 = chart.timeScale().logicalToCoordinate(base + 1);
+  if (c0 == null || c1 == null) return null;
+  return c0 + (c1 - c0) * frac;
+}
+
 function coordinateForTime(time) {
   if (!currentCandles.length) {
     const exact = chart.timeScale().timeToCoordinate(time);
@@ -3494,7 +3626,7 @@ function coordinateForTime(time) {
   // left of the plot, instead of LWC clamping them to the left edge.
   const logical = logicalIndexForTime(time);
   if (logical == null) return null;
-  return chart.timeScale().logicalToCoordinate(logical);
+  return logicalToScreenCoordinate(logical);
 }
 
 function drawOverlay() {

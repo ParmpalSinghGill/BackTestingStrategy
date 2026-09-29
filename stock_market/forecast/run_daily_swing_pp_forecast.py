@@ -83,7 +83,6 @@ def ins_paths(entry_day: datetime.date | None = None) -> list[Path]:
     paths = [
         FORECAST_DIR / INS_NAME,
         WATCHLIST_DIR / INS_NAME,
-        WATCHLIST_DIR / f"RAN_{INS_NAME}",
     ]
     if entry_day is not None:
         stamp = entry_day.strftime("%d_%b_%Y")
@@ -101,7 +100,6 @@ def write_watchlist(symbols: list[str], entry_day: datetime.date) -> None:
         FORECAST_DIR / f"{TAG}_{stamp}.txt",
         FORECAST_DIR / f"{TAG}.txt",
         WATCHLIST_DIR / f"{TAG}.txt",
-        WATCHLIST_DIR / f"RAN_{TAG}.txt",
     ]
     for path in paths:
         path.write_text(line, encoding="utf-8")
@@ -157,7 +155,6 @@ def write_rr(
         FORECAST_DIR / f"{RR_TAG}_{stamp}.txt",
         FORECAST_DIR / f"{RR_TAG}.txt",
         WATCHLIST_DIR / f"{RR_TAG}.txt",
-        WATCHLIST_DIR / f"RAN_{RR_TAG}.txt",
     ]
     for path in paths:
         path.write_text(body, encoding="utf-8")
@@ -284,24 +281,31 @@ def notify_discord(picked: pd.DataFrame, entry_day: datetime.date) -> None:
         print("[discord] webhook file missing — skip", flush=True)
         return
     lines = [
-        f"Swing_PP — enter {entry_day.strftime('%d %b %Y')} at the open ({len(picked)} names)",
+        f"**Swing_PP — Signals for {entry_day.strftime('%d %b %Y')} ({len(picked)} names)**",
         "",
     ]
     for rec in picked.to_dict("records"):
         fy = to_fyers(str(rec["Ticker"]))
-        sl = float(rec.get("SL_Price") or 0.0)
+        entry_px = float(rec.get("Entry_Price") or rec.get("C2_Close") or 0.0)
+        sl_px = float(rec.get("SL_Price") or 0.0)
+        risk = max(entry_px - sl_px, 0.0)
+        tp1 = round(entry_px + 2.0 * risk, 2)
+        sup_px = float(rec.get("Support_Price") or 0.0)
+        liq_date = str(rec.get("Liquidity_Date") or "?")
+        liq_tf = str(rec.get("Liquidity_Type") or "Weekly")
         c1 = rec.get("C1_High")
         try:
             c1s = f"{float(c1):.2f}" if c1 not in (None, "") else "?"
         except (TypeError, ValueError):
             c1s = "?"
-        try:
-            meta = f"{float(rec.get('Meta_P')):.3f}"
-        except (TypeError, ValueError):
-            meta = "?"
-        lines.append(f"{fy}  SL {sl:.2f}  C1 high {c1s}  Meta_P {meta}")
-    lines.append("")
-    lines.append("Same session: SL, else 1:2, else if close is below C1 high sell at that close.")
+        lines.append(f"📌 **{fy}**")
+        lines.append(f"  • **Entry Price**: At Market Open (Est. ₹{entry_px:.2f})")
+        lines.append(f"  • **Stop Loss (SL)**: ₹{sl_px:.2f}")
+        lines.append(f"  • **Target 1 (1:2)**: ₹{tp1:.2f}")
+        lines.append(f"  • **Liquidity**: Support ₹{sup_px:.2f} ({liq_tf} Swing Low from {liq_date})")
+        lines.append(f"  • **Scratch Level**: Close < C1 High ₹{c1s} (Exit at close if today closes below)")
+        lines.append("")
+    lines.append("⚠️ *Execution: Enter at Open. If SL or 1:2 hit intraday -> exit. If entry session closes below C1 high -> sell at close (scratch).*")
     content = "\n".join(lines)
     if len(content) > 1900:
         content = content[:1890].rstrip() + "\n…"

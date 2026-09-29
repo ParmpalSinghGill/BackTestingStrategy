@@ -120,9 +120,10 @@ def write_xauusdt_session_daily() -> None:
         logger.info("No 1m month files; skip %s", "Gold_Daily_XAUUSDT_UTC.csv")
         return
     minute = normalize_frame(pd.concat(frames, ignore_index=True))
-    if str(BASE_DIR) not in sys.path:
-        sys.path.insert(0, str(BASE_DIR))
-    from gold_chart.events import write_xauusdt_utc_daily
+    backtest_dir = Path(__file__).resolve().parents[1] / "backtest"
+    if str(backtest_dir) not in sys.path:
+        sys.path.insert(0, str(backtest_dir))
+    from events import write_xauusdt_utc_daily
 
     daily = write_xauusdt_utc_daily(minute)
     logger.info(

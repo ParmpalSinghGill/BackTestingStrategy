@@ -618,11 +618,19 @@ def _scan_bar(
         touch_triggered = bool(lvl_state.get("touch_triggered"))
 
         def emit(status: str) -> None:
+            side = (
+                "High"
+                if level.get("type") == "resistance" or "High" in level.get("name", "")
+                else "Low"
+                if level.get("type") == "support" or "Low" in level.get("name", "")
+                else ""
+            )
             events.append({
                 "time": int(bar_time),
                 "status": status,
                 "level": level["name"],
                 "timeframe": level["timeframe"],
+                "side": side,
                 "type": level["type"],
                 "price": round(lprice, 2),
                 "spot": round(current_price, 2),

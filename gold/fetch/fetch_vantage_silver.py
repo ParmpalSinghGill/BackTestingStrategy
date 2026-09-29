@@ -164,6 +164,8 @@ def normalize_daily(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=DAILY_COLUMNS)
     out = df.copy()
+    if isinstance(out.index, pd.DatetimeIndex) and "Date" not in out.columns and "datetime" not in out.columns:
+        out = out.reset_index()
     if "datetime" in out.columns:
         out = out.rename(columns={"datetime": "Date"})
     elif "Date" not in out.columns:
@@ -180,6 +182,7 @@ def normalize_daily(df: pd.DataFrame) -> pd.DataFrame:
         out[col] = pd.to_numeric(out.get(col), errors="coerce")
     out["Volume"] = pd.to_numeric(out.get("Volume"), errors="coerce").fillna(0).astype("int64")
     out = out.dropna(subset=["Date", "Open", "High", "Low", "Close"])
+    out = out[out["Date"] >= "2000-01-01"]
     out = out.drop_duplicates(subset=["Date"], keep="last").sort_values("Date")
     return out[DAILY_COLUMNS].reset_index(drop=True)
 
@@ -587,13 +590,14 @@ def run_daily_update(deep: bool = False) -> int:
     frames: list[pd.DataFrame] = []
     try:
         raw = tv_hist(Interval.in_daily, n_bars)
-        frames.append(raw)
+        if raw is not None and not raw.empty:
+            frames.append(normalize_daily(raw))
     except Exception as exc:
         logger.warning("  Vantage daily failed: %s", exc)
     if deep:
         duka = fetch_dukascopy_daily()
         if not duka.empty:
-            frames.append(duka)
+            frames.append(normalize_daily(duka))
             logger.info("  Dukascopy daily total %s bars", f"{len(duka):,}")
     if not frames:
         logger.info("No silver daily bars returned.")
@@ -605,6 +609,7 @@ def run_daily_update(deep: bool = False) -> int:
     existing = (
         normalize_daily(pd.read_csv(DAILY_FILE)) if DAILY_FILE.exists() else pd.DataFrame(columns=DAILY_COLUMNS)
     )
+    existing = existing[existing["Date"] >= "2000-01-01"]
     before = len(existing)
     if existing.empty:
         combined = incoming
@@ -644,6 +649,27 @@ def main() -> int:
         logger.error("Vantage silver fetch failed: %s", exc)
         return 1
     finally:
+        try:
+            m_files = list_month_files()
+            if m_files:
+                backtest_dir = Path(__file__).resolve().parents[1] / "backtest"
+                if str(backtest_dir) not in sys.path:
+                    sys.path.insert(0, str(backtest_dir))
+                from events import write_xauusdt_utc_daily
+                frames = [read_month_csv(p) for p in m_files[-2:]]
+                frames = [f for f in frames if not f.empty]
+                if frames:
+                    minute = normalize_1m(pd.concat(frames, ignore_index=True))
+                    daily = write_xauusdt_utc_daily(
+                        minute, OUTPUT_DIR / "Silver_Daily_XAGUSDT_UTC.csv"
+                    )
+                    logger.info(
+                        "XAGUSDT UTC daily: %s sessions -> %s",
+                        f"{len(daily):,}",
+                        OUTPUT_DIR / "Silver_Daily_XAGUSDT_UTC.csv",
+                    )
+        except Exception as exc:
+            logger.warning("Could not write XAGUSDT UTC daily: %s", exc)
         lock.unlink(missing_ok=True)
 
 

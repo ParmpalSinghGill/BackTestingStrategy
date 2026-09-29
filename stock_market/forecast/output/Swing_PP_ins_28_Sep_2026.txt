@@ -2,7 +2,7 @@ Swing_PP — session instructions
 next session (ENTER): 2026-09-28  (28 Sep 2026)
 asof (last complete bar): 2026-09-25
 gate: TRADE allowed (last 50 paper results failed 18.0%, skip if >= 74%)
-why: 25 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
+why: 29 setups after >= 1 month age; 0 with Meta_P >= 0.48 (need top 16)
 
 HOW TO TRADE
   NEW names: ENTER tomorrow at that session's OPEN.
@@ -20,28 +20,32 @@ NEW ENTRIES: NONE for tomorrow.
   No Meta_P names to publish.
 
 scored today:
-  drop PRAXIS.NS         Meta_P 0.456  liq 2026-03-31  Monthly
-  drop SETCO.NS          Meta_P 0.445  liq 2026-08-21  Weekly
-  drop WEWIN.NS          Meta_P 0.421  liq 2026-05-08  Weekly
-  drop AQYLON.NS         Meta_P 0.414  liq 2026-04-10  Weekly
-  drop NELCAST.NS        Meta_P 0.380  liq 2026-06-26  Weekly
-  drop AMRUTANJAN.NS     Meta_P 0.371  liq 2026-05-08  Weekly
-  drop FLAIR.NS          Meta_P 0.359  liq 2025-06-27  Weekly
-  drop DANGEE.NS         Meta_P 0.354  liq 2026-05-22  Weekly
-  drop ERIS.NS           Meta_P 0.347  liq 2026-05-22  Weekly
-  drop JKCEMENT.NS       Meta_P 0.343  liq 2026-07-10  Weekly
-  drop UNITEDTEA.NS      Meta_P 0.342  liq 2026-03-06  Weekly
-  drop ICICIGI.NS        Meta_P 0.328  liq 2025-03-31  Monthly
-  drop AGRITECH.NS       Meta_P 0.327  liq 2026-05-29  Weekly
-  drop LGHL.NS           Meta_P 0.317  liq 2025-04-30  Monthly
-  drop VIVIMEDLAB.NS     Meta_P 0.317  liq 2026-05-22  Weekly
-  drop RAJTV.NS          Meta_P 0.316  liq 2026-06-12  Weekly
-  drop BALAJEE.NS        Meta_P 0.314  liq 2026-06-12  Weekly
-  drop STARHEALTH.NS     Meta_P 0.314  liq 2026-08-14  Weekly
-  drop AERONEU.NS        Meta_P 0.313  liq 2026-06-12  Weekly
-  drop EUROTEXIND.NS     Meta_P 0.307  liq 2026-01-30  Weekly
-  drop TARACHAND.NS      Meta_P 0.304  liq 2025-01-31  Monthly
-  drop DELTAMAGNT.NS     Meta_P 0.294  liq 2026-06-12  Weekly
-  drop PIGL.NS           Meta_P 0.289  liq 2026-07-31  Weekly
-  drop NORBTEAEXP.NS     Meta_P 0.280  liq 2026-07-03  Weekly
-  drop SUVIDHAA.NS       Meta_P 0.238  liq 2026-03-31  Monthly
+  drop MHLXMIRU.NS       Meta_P 0.467  liq 2026-05-22  Weekly
+  drop PRAXIS.NS         Meta_P 0.460  liq 2026-03-31  Monthly
+  drop SETCO.NS          Meta_P 0.437  liq 2026-08-21  Weekly
+  drop LGHL.NS           Meta_P 0.426  liq 2025-04-30  Monthly
+  drop BALAJEE.NS        Meta_P 0.411  liq 2026-06-12  Weekly
+  drop GEMAROMA.NS       Meta_P 0.411  liq 2026-08-14  Weekly
+  drop SATIN.NS          Meta_P 0.407  liq 2026-07-03  Weekly
+  drop ENERGYDEV.NS      Meta_P 0.386  liq 2026-05-29  Weekly
+  drop STARHEALTH.NS     Meta_P 0.377  liq 2026-08-14  Weekly
+  drop INTENTECH.NS      Meta_P 0.372  liq 2026-05-08  Weekly
+  drop BIRLACORPN.NS     Meta_P 0.369  liq 2026-06-12  Weekly
+  drop TARACHAND.NS      Meta_P 0.358  liq 2025-01-31  Monthly
+  drop GOLDENTOBC.NS     Meta_P 0.355  liq 2018-12-21  Weekly
+  drop ROML.NS           Meta_P 0.351  liq 2026-06-12  Weekly
+  drop WEWIN.NS          Meta_P 0.339  liq 2026-05-08  Weekly
+  drop NORBTEAEXP.NS     Meta_P 0.339  liq 2026-07-03  Weekly
+  drop VIVIMEDLAB.NS     Meta_P 0.338  liq 2026-05-22  Weekly
+  drop HDFCBANK.NS       Meta_P 0.338  liq 2026-04-03  Weekly
+  drop GODIGIT.NS        Meta_P 0.330  liq 2026-05-08  Weekly
+  drop TREJHARA.NS       Meta_P 0.327  liq 2026-04-03  Weekly
+  drop DANGEE.NS         Meta_P 0.324  liq 2026-05-22  Weekly
+  drop SURYAROSNI.NS     Meta_P 0.319  liq 2026-07-24  Weekly
+  drop ICICIGI.NS        Meta_P 0.312  liq 2025-03-31  Monthly
+  drop NELCAST.NS        Meta_P 0.311  liq 2026-06-26  Weekly
+  drop BOHRAIND.NS       Meta_P 0.310  liq 2026-01-23  Weekly
+  drop IREDA.NS          Meta_P 0.308  liq 2026-06-12  Weekly
+  drop SCHAND.NS         Meta_P 0.294  liq 2026-06-12  Weekly
+  drop RAJTV.NS          Meta_P 0.286  liq 2026-06-12  Weekly
+  drop XELPMOC.NS        Meta_P 0.216  liq 2025-04-30  Monthly

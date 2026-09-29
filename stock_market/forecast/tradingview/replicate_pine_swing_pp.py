@@ -315,7 +315,7 @@ def simulate(symbol: str, start: pd.Timestamp, clip_gap: bool = False,
             if c1_bar is None or i <= c1_bar:
                 hunt["sweep_low"] = min(hunt["sweep_low"], l)
             support = hunt["support"]
-            if i > hunt["until"]:
+            if i > hunt["until"] or c < support:
                 hunting = False
                 hunt = None
                 c1_bar = None

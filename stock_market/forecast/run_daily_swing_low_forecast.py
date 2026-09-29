@@ -181,6 +181,10 @@ def _swing_low_pending_worker(payload: tuple) -> dict | None:
                 support, tf = _resolve_valid_below(price, str(sup["timeframe"]), active, M2_LOCK)
                 end = min(n - 1, i + MAX_POST_SWEEP)
                 for c1 in range(i, end):
+                    if c1 > i and float(closes[c1 - 1]) < support:
+                        break
+                    if float(closes[c1]) < support:
+                        break
                     if not _c1_match("OPEN_BELOW", float(opens[c1]), float(highs[c1]), float(closes[c1]), support):
                         continue
                     c2 = c1 + 1
@@ -285,14 +289,12 @@ def write_txt(symbols: list[str], entry_day: datetime.date, min_age_months: int 
             FORECAST_DIR / f"{tag}_{stamp}.txt",
             FORECAST_DIR / f"{tag}.txt",
             WATCHLIST_DIR / f"{tag}.txt",
-            WATCHLIST_DIR / f"RAN_{tag}.txt",
         ]
     else:
         paths = [
             FORECAST_DIR / f"Swing_low_{stamp}.txt",
             FORECAST_DIR / "Swing_low.txt",
             WATCHLIST_DIR / "Swing_low.txt",
-            WATCHLIST_DIR / "RAN_Swing_low.txt",
         ]
     for path in paths:
         path.write_text(line, encoding="utf-8")

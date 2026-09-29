@@ -365,7 +365,7 @@ if hunting and (na(c1Bar) or bar_index <= c1Bar)
 bool a1Now = false
 
 if hunting and strategy.position_size == 0 and not pendingEntry
-    if bar_index > hunt.untilBar
+    if bar_index > hunt.untilBar or close < hunt.support
         hunting := false
         c1Bar := na
         c1High := na

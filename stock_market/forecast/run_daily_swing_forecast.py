@@ -183,6 +183,10 @@ def _pending_worker(payload: tuple) -> dict | None:
             support, tf = _resolve_effective_liquidity(float(sup["price"]), str(sup["timeframe"]), active)
             end = min(n - 1, i + MAX_POST_SWEEP)
             for c1 in range(i, end):
+                if c1 > i and float(closes[c1 - 1]) < support:
+                    break
+                if float(closes[c1]) < support:
+                    break
                 if not _c1_match("OPEN_BELOW", float(opens[c1]), float(highs[c1]), float(closes[c1]), support):
                     continue
                 c2 = c1 + 1
@@ -371,7 +375,6 @@ def write_txt(symbols: list[str], entry_day: datetime.date) -> None:
         FORECAST_DIR / f"Swing_Live_{stamp}.txt",
         FORECAST_DIR / "Swing_Live.txt",
         WATCHLIST_DIR / "Swing_Live.txt",
-        WATCHLIST_DIR / "RAN_Swing_Live.txt",
     ]
     for path in paths:
         path.write_text(line, encoding="utf-8")

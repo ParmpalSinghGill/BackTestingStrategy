@@ -1,51 +1,15 @@
 {
   "capital": 10000.0,
-  "cash": 3972.985595,
+  "cash": 3857.351847,
   "size_pct": 100.0,
   "leverage": 100.0,
   "slippage_pct": 0.002,
   "taker_fee_pct": 0.01,
   "gst_pct": 18.0,
-  "next_id": 48,
-  "next_txn_id": 103,
+  "next_id": 50,
+  "next_txn_id": 109,
   "open": [],
   "markers": [
-    {
-      "time": 1787562480,
-      "buy": false,
-      "text": "S",
-      "price": 4696.1063
-    },
-    {
-      "time": 1787564820,
-      "buy": true,
-      "text": "X",
-      "price": 4700.564
-    },
-    {
-      "time": 1787565060,
-      "buy": false,
-      "text": "S",
-      "price": 4698.6062
-    },
-    {
-      "time": 1787565540,
-      "buy": true,
-      "text": "X",
-      "price": 4702.164
-    },
-    {
-      "time": 1787617980,
-      "buy": false,
-      "text": "S",
-      "price": 4744.9051
-    },
-    {
-      "time": 1787618220,
-      "buy": true,
-      "text": "X",
-      "price": 4751.005
-    },
     {
       "time": 1787618760,
       "buy": false,
@@ -489,33 +453,99 @@
       "buy": true,
       "text": "X",
       "price": 4669.4734
+    },
+    {
+      "time": 1787883120,
+      "buy": false,
+      "text": "S",
+      "price": 4632.2072
+    },
+    {
+      "time": 1787883840,
+      "buy": true,
+      "text": "X",
+      "price": 4636.2827
+    },
+    {
+      "time": 1787887620,
+      "buy": false,
+      "text": "S",
+      "price": 4639.1074
+    },
+    {
+      "time": 1787889840,
+      "buy": true,
+      "text": "X",
+      "price": 4631.3924
+    },
+    {
+      "time": 1787892480,
+      "buy": true,
+      "text": "X",
+      "price": 4634.4926
+    },
+    {
+      "time": 1787894760,
+      "buy": true,
+      "text": "X",
+      "price": 4637.6428
     }
   ],
   "last_closed": {
-    "id": 47,
+    "id": 49,
     "side": "SHORT",
-    "entryTime": 1787849220,
-    "exitTime": 1787849520,
-    "entryFill": 4665.1069,
-    "exitFill": 4669.4734,
-    "quantity": 95.198,
-    "reason": "SL",
-    "pnl": -520.5396,
+    "entryTime": 1787887620,
+    "exitTime": 1787894760,
+    "entryFill": 4639.1074,
+    "exitFill": 4637.6428,
+    "quantity": 75.307,
+    "reason": "CLOSE|CLOSE|SL",
+    "pnl": 322.5494,
     "exits": [
       {
-        "date": "2026-08-27",
-        "timeIst": "22:22:00",
-        "time": 1787849520,
-        "signal": 4669.38,
-        "fill": 4669.4734,
-        "qty": 95.198,
+        "date": "2026-08-28",
+        "timeIst": "09:34:00",
+        "time": 1787889840,
+        "signal": 4631.2998,
+        "fill": 4631.3924,
+        "qty": 37.653,
+        "reason": "CLOSE",
+        "charges": 20.577527,
+        "fee": 17.438582,
+        "gst": 3.138945,
+        "gross": 290.4919,
+        "slipCost": 6.9818,
+        "released": 1746.7631
+      },
+      {
+        "date": "2026-08-28",
+        "timeIst": "10:18:00",
+        "time": 1787892480,
+        "signal": 4634.3999,
+        "fill": 4634.4926,
+        "qty": 18.827,
+        "reason": "CLOSE",
+        "charges": 10.295924,
+        "fee": 8.725359,
+        "gst": 1.570565,
+        "gross": 86.8831,
+        "slipCost": 3.4922,
+        "released": 873.4048
+      },
+      {
+        "date": "2026-08-28",
+        "timeIst": "10:56:00",
+        "time": 1787894760,
+        "signal": 4637.55,
+        "fill": 4637.6428,
+        "qty": 18.827,
         "reason": "SL",
-        "charges": 52.453894,
-        "fee": 44.452453,
-        "gst": 8.001441,
-        "gross": -415.6809,
-        "slipCost": 17.7723,
-        "released": 4441.0885
+        "charges": 10.302922,
+        "fee": 8.73129,
+        "gst": 1.571632,
+        "gross": 27.5749,
+        "slipCost": 3.4934,
+        "released": 873.4048
       }
     ]
   },

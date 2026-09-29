@@ -513,9 +513,10 @@ def main() -> int:
             frames = [normalize_1m(pd.read_csv(path)) for path in list_month_files()]
             frames = [frame for frame in frames if not frame.empty]
             if frames:
-                if str(BASE_DIR) not in sys.path:
-                    sys.path.insert(0, str(BASE_DIR))
-                from gold_chart.events import write_xauusdt_utc_daily
+                backtest_dir = Path(__file__).resolve().parents[1] / "backtest"
+                if str(backtest_dir) not in sys.path:
+                    sys.path.insert(0, str(backtest_dir))
+                from events import write_xauusdt_utc_daily
                 minute = normalize_1m(pd.concat(frames, ignore_index=True))
                 daily = write_xauusdt_utc_daily(
                     minute, OUTPUT_DIR / "Gold_Daily_XAUUSDT_UTC.csv"

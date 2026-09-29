@@ -106,8 +106,15 @@ def _feed_has_months(path: Path) -> bool:
 
 
 def daily_file_for(folder: Path) -> Path:
+    known = KNOWN_FEEDS.get(folder.name)
+    if known and known.get("dailyName"):
+        target = folder / str(known["dailyName"])
+        if target.exists():
+            return target
     silver = folder / "Silver_Daily.csv"
     gold = folder / "Gold_Daily.csv"
+    if "silver" in folder.name.lower() and silver.exists():
+        return silver
     if silver.exists() and not gold.exists():
         return silver
     return gold
@@ -439,7 +446,8 @@ def serialize_source() -> dict[str, object]:
 def serialize_event_payload() -> dict[str, object]:
     """EventFinder-style NEAR/TOUCH list from the selected MARKET_DATA feed only."""
     signature = (*_data_signature(), DATA_DIR.name)
-    utc_path = DATA_DIR / XAUUSDT_DAILY_NAME
+    utc_name = "Silver_Daily_XAGUSDT_UTC.csv" if "silver" in DATA_DIR.name.lower() else XAUUSDT_DAILY_NAME
+    utc_path = DATA_DIR / utc_name
     return serialize_events(_load_source(), load_daily_frame(), signature, utc_path)
 
 
