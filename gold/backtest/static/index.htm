@@ -186,13 +186,6 @@
     <div id="error"></div>
   </main>
   <aside class="ticket" id="ticket" aria-label="Paper order ticket">
-    <div id="paper-pos" class="paper-pos is-flat">
-      <span class="paper-pos-mark" id="paper-pos-mark">○</span>
-      <div class="paper-pos-copy">
-        <div id="paper-pos-title">No position</div>
-        <div id="paper-pos-sub">Click Buy / Long or Sell / Short to enter</div>
-      </div>
-    </div>
     <div class="ticket-pills">
       <select id="paper-margin-mode" class="ticket-pill" title="Isolated margin. Cross is not simulated.">
         <option value="isolated">Isolated</option>
@@ -244,8 +237,23 @@
       <div><span>Margin</span><b id="paper-margin">—</b></div>
       <div><span>Est. Liq. Price</span><b id="paper-liq">—</b></div>
     </div>
-    <button type="button" id="paper-tpsl-toggle" class="ticket-tpsl-btn">+ Add TP / SL</button>
-    <p id="paper-place-hint" class="ticket-hint">Each order has its own line. Click TP or SL, then drag. × closes that order. Buy / Sell stay available — lower Size % to add more.</p>
+    <div class="ticket-action-row">
+      <button type="button" id="paper-tpsl-toggle" class="ticket-tpsl-btn">+ Add TP / SL</button>
+      <button type="button" id="paper-breakout-toggle" class="ticket-breakout-btn" title="Breakout mode: wait for candle to break reference candle's High (Long) or Low (Short) before placing trade">+ Breakout</button>
+    </div>
+    <div id="paper-breakout-wrap" class="ticket-breakout-wrap" hidden>
+      <div class="breakout-input-row">
+        <label for="paper-breakout-time" title="Candle time (HH:MM) to consider for breaking High/Low. Tracks current candle until manually changed or trade entered.">Ref Candle</label>
+        <input id="paper-breakout-time" type="text" placeholder="HH:MM" title="Candle time (HH:MM)">
+        <button type="button" id="paper-breakout-reset" class="breakout-reset-btn" title="Reset to track current candle">⟳ Current</button>
+      </div>
+      <div class="breakout-levels-row">
+        <span>High: <b id="paper-breakout-high">—</b></span>
+        <span>Low: <b id="paper-breakout-low">—</b></span>
+      </div>
+      <div id="paper-breakout-status" class="breakout-status" hidden></div>
+    </div>
+    <p id="paper-place-hint" class="ticket-hint" hidden>Each order has its own line. Click TP or SL, then drag. × closes that order. Buy / Sell stay available — lower Size % to add more.</p>
     <div id="paper-tpsl" class="ticket-tpsl" hidden>
       <label>TP
         <span class="tpsl-input">

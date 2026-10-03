@@ -1776,7 +1776,9 @@ function finishRender() {
   drawOverlay();
   syncEventMarkers();
   updatePaperHud();
+  syncBreakoutWithReplay();
   checkPaperStops();
+  syncBreakoutWithReplay();
 }
 
 function renderChart({ preserveRange = false } = {}) {
@@ -2242,12 +2244,21 @@ function setPaperSide(side, { force = false } = {}) {
 
 function togglePaperTpsl(forceOpen) {
   const box = paperField("paper-tpsl");
+  const hint = paperField("paper-place-hint");
   if (!box) return;
   const open = forceOpen === true || (forceOpen !== false && box.hidden);
   box.hidden = !open;
+  if (hint) hint.hidden = !open;
   const toggle = paperField("paper-tpsl-toggle");
-  if (toggle) toggle.textContent = open ? "TP / SL" : "+ Add TP / SL";
-  if (open && !paperPlaceKind) idlePaperPlaceHint();
+  if (toggle) {
+    toggle.textContent = open ? "TP / SL" : "+ Add TP / SL";
+    toggle.classList.toggle("active", open);
+  }
+  if (!open) {
+    clearPaperPlaceGuide();
+  } else if (!paperPlaceKind) {
+    idlePaperPlaceHint();
+  }
 }
 
 function paperEquity() {
@@ -2468,8 +2479,16 @@ function updateTicketButtons() {
   paperField("ticket-long")?.removeAttribute("disabled");
   paperField("ticket-short")?.removeAttribute("disabled");
   if (submit) {
-    submit.className = `ticket-submit ${wantShort ? "short" : "long"}`;
-    submit.textContent = wantShort ? "Sell / Short" : "Buy / Long";
+    if (breakoutEnabled && breakoutArmed) {
+      submit.className = "ticket-submit armed";
+      submit.textContent = `Cancel Pending ${breakoutArmedSide === "short" ? "Short" : "Long"}`;
+    } else if (breakoutEnabled) {
+      submit.className = `ticket-submit ${wantShort ? "short" : "long"}`;
+      submit.textContent = wantShort ? "Arm Breakout Short" : "Arm Breakout Long";
+    } else {
+      submit.className = `ticket-submit ${wantShort ? "short" : "long"}`;
+      submit.textContent = wantShort ? "Sell / Short" : "Buy / Long";
+    }
     submit.hidden = false;
     submit.disabled = Number(paperField("paper-size")?.value || 0) <= 0;
   }
@@ -2592,6 +2611,7 @@ function renderPaperBooks() {
 }
 
 function updatePositionStatus() {
+  renderPaperBooks();
   const wrap = paperField("paper-pos");
   const mark = paperField("paper-pos-mark");
   const title = paperField("paper-pos-title");
@@ -2600,7 +2620,6 @@ function updatePositionStatus() {
   const rows = paperPositions();
   const last = paperState?.lastClosed;
   wrap.classList.remove("is-long", "is-short", "is-flat");
-  renderPaperBooks();
   if (rows.length) {
     const longs = rows.filter((pos) => !isPaperShort(pos)).length;
     const shorts = rows.length - longs;
@@ -2797,8 +2816,269 @@ function paperMark() {
   return { price, time: replayTime, timeframe: currentTimeframe };
 }
 
+
+// --- Breakout Pending Order Logic ---
+let breakoutEnabled = false;
+let breakoutArmed = false;
+let breakoutManual = false;
+let breakoutRefBar = null;
+let breakoutArmedSide = "long";
+let breakoutArmedTime = null;
+let breakoutArmedRefBar = null;
+let breakoutArmedOrderData = null;
+let breakoutPriceLine = null;
+
+function clearBreakoutPriceLine() {
+  if (!breakoutPriceLine) return;
+  try {
+    candleSeries.removePriceLine(breakoutPriceLine);
+  } catch {
+    /* ignore */
+  }
+  breakoutPriceLine = null;
+}
+
+function updateBreakoutPriceLine() {
+  if (!breakoutEnabled || !breakoutArmed || !breakoutArmedRefBar) {
+    clearBreakoutPriceLine();
+    return;
+  }
+  const isShort = breakoutArmedSide === "short";
+  const triggerPx = isShort ? breakoutArmedRefBar.low : breakoutArmedRefBar.high;
+  const slip = Number(paperField("paper-slip")?.value || 0.02);
+  const options = {
+    price: triggerPx,
+    color: isShort ? "#ef5350" : "#26a69a",
+    lineWidth: 2,
+    lineStyle: LightweightCharts.LineStyle.Dotted,
+    axisLabelVisible: true,
+    title: `BREAKOUT ${isShort ? "SHORT <" : "LONG >"} ${triggerPx.toFixed(2)}`,
+  };
+  if (breakoutPriceLine) {
+    breakoutPriceLine.applyOptions(options);
+    return;
+  }
+  breakoutPriceLine = candleSeries.createPriceLine(options);
+}
+
+function disarmBreakout(clearNotification = true) {
+  breakoutArmed = false;
+  breakoutArmedRefBar = null;
+  breakoutArmedTime = null;
+  breakoutArmedOrderData = null;
+  clearBreakoutPriceLine();
+  const statusEl = paperField("paper-breakout-status");
+  if (statusEl && clearNotification) {
+    statusEl.hidden = true;
+    statusEl.className = "breakout-status";
+  }
+  updateTicketButtons();
+}
+
+function toggleBreakoutMode(forceOpen) {
+  const wrap = paperField("paper-breakout-wrap");
+  const toggle = paperField("paper-breakout-toggle");
+  if (!wrap) return;
+  const open = forceOpen === true || (forceOpen !== false && wrap.hidden);
+  breakoutEnabled = open;
+  wrap.hidden = !open;
+  if (toggle) {
+    toggle.textContent = open ? "Breakout" : "+ Breakout";
+    toggle.classList.toggle("active", open);
+  }
+  if (!open) {
+    disarmBreakout();
+    breakoutManual = false;
+  } else {
+    breakoutManual = false;
+    syncBreakoutWithReplay();
+  }
+  updateTicketButtons();
+}
+
+function findCandleByTimeStr(timeStr) {
+  if (!timeStr || !currentCandles.length) return null;
+  const clean = timeStr.trim().toLowerCase();
+  for (let i = currentCandles.length - 1; i >= 0; i--) {
+    const bar = currentCandles[i];
+    const clock = formatTime(bar.time, "1m").toLowerCase();
+    const parts = istParts(bar.time);
+    if (clock === clean || parts.time === clean) return bar;
+  }
+  // Try matching minute suffix like ":30" or "30"
+  if (/^\d{1,2}$/.test(clean)) {
+    const minPadded = clean.padStart(2, "0");
+    for (let i = currentCandles.length - 1; i >= 0; i--) {
+      const bar = currentCandles[i];
+      if (istParts(bar.time).time.endsWith(`:${minPadded}`)) return bar;
+    }
+  }
+  return null;
+}
+
+function applyBreakoutManualTime() {
+  const input = paperField("paper-breakout-time");
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) {
+    breakoutManual = false;
+    syncBreakoutWithReplay();
+    return;
+  }
+  const matched = findCandleByTimeStr(val);
+  if (matched) {
+    breakoutRefBar = matched;
+    breakoutManual = true;
+    updateBreakoutUi();
+  } else {
+    // If not found in loaded candles, keep manual bar if available
+    breakoutManual = true;
+    updateBreakoutUi();
+  }
+}
+
+function syncBreakoutWithReplay() {
+  if (!breakoutEnabled) return;
+  if (!breakoutArmed && !breakoutManual) {
+    const curBar = currentCandles[currentCandles.length - 1];
+    if (curBar) {
+      breakoutRefBar = curBar;
+      const input = paperField("paper-breakout-time");
+      if (input && document.activeElement !== input) {
+        input.value = formatTime(curBar.time, "1m");
+      }
+    }
+  }
+  updateBreakoutUi();
+  checkPaperBreakoutOrder();
+}
+
+function updateBreakoutUi() {
+  if (!breakoutEnabled) {
+    clearBreakoutPriceLine();
+    return;
+  }
+  const curBar = breakoutRefBar || currentCandles[currentCandles.length - 1];
+  const highEl = paperField("paper-breakout-high");
+  const lowEl = paperField("paper-breakout-low");
+  if (curBar) {
+    if (highEl) highEl.textContent = Number(curBar.high).toFixed(2);
+    if (lowEl) lowEl.textContent = Number(curBar.low).toFixed(2);
+  } else {
+    if (highEl) highEl.textContent = "—";
+    if (lowEl) lowEl.textContent = "—";
+  }
+
+  const statusEl = paperField("paper-breakout-status");
+  if (statusEl) {
+    if (breakoutArmed && breakoutArmedRefBar) {
+      statusEl.hidden = false;
+      statusEl.className = "breakout-status";
+      const isShort = breakoutArmedSide === "short";
+      const slipPct = Number(paperField("paper-slip")?.value || 0.02);
+      const trig = isShort ? breakoutArmedRefBar.low : breakoutArmedRefBar.high;
+      const estFill = isShort ? trig * (1 - slipPct / 100) : trig * (1 + slipPct / 100);
+      statusEl.innerHTML = `<span>⏳ <b>Pending ${isShort ? 'Short' : 'Long'}</b>: Break ${isShort ? 'Low < ' : 'High > '}${trig.toFixed(2)} (Buy @ ~${estFill.toFixed(2)})</span> <button type="button" class="breakout-cancel-btn" id="paper-breakout-cancel-btn">Cancel</button>`;
+      document.getElementById("paper-breakout-cancel-btn")?.addEventListener("click", () => disarmBreakout());
+    } else if (!statusEl.classList.contains("triggered")) {
+      statusEl.hidden = true;
+    }
+  }
+  updateBreakoutPriceLine();
+}
+
+function showBreakoutNotification(msg) {
+  const statusEl = paperField("paper-breakout-status");
+  if (!statusEl) return;
+  statusEl.hidden = false;
+  statusEl.className = "breakout-status triggered";
+  statusEl.innerHTML = `<span>${msg}</span>`;
+  setTimeout(() => {
+    if (statusEl && !breakoutArmed) {
+      statusEl.hidden = true;
+      statusEl.className = "breakout-status";
+    }
+  }, 6000);
+}
+
+async function checkPaperBreakoutOrder() {
+  if (!breakoutEnabled || !breakoutArmed || !breakoutArmedRefBar) return;
+  const curBar = currentCandles[currentCandles.length - 1];
+  if (!curBar) return;
+
+  // Must wait for subsequent candle (curBar after armed time)
+  if (breakoutArmedTime && curBar.time <= breakoutArmedTime) {
+    return;
+  }
+
+  const slipPct = Number(paperField("paper-slip")?.value || 0.02);
+  let triggered = false;
+  let triggerPrice = 0;
+
+  if (breakoutArmedSide === "long") {
+    if (Number(curBar.high) >= Number(breakoutArmedRefBar.high)) {
+      triggered = true;
+      triggerPrice = Number(breakoutArmedRefBar.high);
+    }
+  } else {
+    if (Number(curBar.low) <= Number(breakoutArmedRefBar.low)) {
+      triggered = true;
+      triggerPrice = Number(breakoutArmedRefBar.low);
+    }
+  }
+
+  if (triggered) {
+    const side = breakoutArmedSide;
+    const orderData = breakoutArmedOrderData || {};
+    disarmBreakout(false);
+
+    try {
+      await persistPaperCapital();
+      await paperPost({
+        action: side === "short" ? "short" : "long",
+        price: triggerPrice,
+        time: curBar.time,
+        timeframe: currentTimeframe,
+        ...orderData,
+      });
+      const estFill = side === "short"
+        ? triggerPrice * (1 - slipPct / 100)
+        : triggerPrice * (1 + slipPct / 100);
+      showBreakoutNotification(`✓ Breakout ${side.toUpperCase()} executed @ ~${estFill.toFixed(2)} (${side === "long" ? "High" : "Low"} ${triggerPrice.toFixed(2)} crossed)`);
+    } catch (error) {
+      window.alert(`Breakout execution error: ${error.message}`);
+    }
+  }
+}
+
 async function paperSubmit() {
   try {
+    if (breakoutEnabled) {
+      if (breakoutArmed) {
+        disarmBreakout();
+        return;
+      }
+      if (!breakoutRefBar) {
+        breakoutRefBar = currentCandles[currentCandles.length - 1];
+      }
+      if (!breakoutRefBar) {
+        window.alert("No reference candle found for breakout.");
+        return;
+      }
+      breakoutArmed = true;
+      breakoutManual = true;
+      breakoutArmedSide = paperSide === "short" ? "short" : "long";
+      breakoutArmedTime = replayTime;
+      breakoutArmedRefBar = { ...breakoutRefBar };
+      breakoutArmedOrderData = {
+        ...readPaperStops(),
+        sizePct: Number(paperField("paper-size")?.value || paperState?.sizePct || 100),
+        leverage: Number(paperField("paper-leverage")?.value || paperState?.leverage || 1),
+      };
+      updateBreakoutUi();
+      updateTicketButtons();
+      return;
+    }
     await persistPaperCapital();
     await paperPost({
       action: paperSide === "short" ? "short" : "long",
@@ -5043,6 +5323,22 @@ document.getElementById("paper-book-save").addEventListener("click", paperSaveBo
 document.getElementById("ticket-long").addEventListener("click", () => setPaperSide("long"));
 document.getElementById("ticket-short").addEventListener("click", () => setPaperSide("short"));
 document.getElementById("paper-tpsl-toggle").addEventListener("click", () => togglePaperTpsl());
+document.getElementById("paper-breakout-toggle")?.addEventListener("click", () => toggleBreakoutMode());
+document.getElementById("paper-breakout-time")?.addEventListener("input", applyBreakoutManualTime);
+document.getElementById("paper-breakout-time")?.addEventListener("change", applyBreakoutManualTime);
+document.getElementById("paper-breakout-reset")?.addEventListener("click", () => {
+  breakoutManual = false;
+  syncBreakoutWithReplay();
+});
+document.getElementById("ticket")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (document.activeElement?.id === "paper-breakout-time") {
+      applyBreakoutManualTime();
+    }
+    paperSubmit();
+  }
+});
 document.getElementById("paper-size").addEventListener("input", () => {
   updateTicketPreview();
   const submit = paperField("paper-submit");

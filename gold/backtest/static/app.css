@@ -1099,3 +1099,117 @@ button.danger:hover {
   .replay-clock { font-size: 12px; }
   button { padding: 0 7px; }
 }
+
+.ticket-action-row {
+  display: flex;
+  gap: 6px;
+}
+.ticket-action-row .ticket-tpsl-btn,
+.ticket-action-row .ticket-breakout-btn {
+  flex: 1;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #16181e;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--muted);
+}
+.ticket-action-row .ticket-tpsl-btn:hover,
+.ticket-action-row .ticket-breakout-btn:hover {
+  color: var(--text);
+}
+.ticket-action-row .ticket-tpsl-btn.active,
+.ticket-action-row .ticket-breakout-btn.active {
+  color: #fff;
+  background: #26a69a26;
+  border-color: #26a69a;
+}
+.ticket-breakout-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #16181e;
+}
+.breakout-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.breakout-input-row label {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.breakout-input-row input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0f1115;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+.breakout-reset-btn {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #232733;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.breakout-reset-btn:hover {
+  color: var(--text);
+}
+.breakout-levels-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+.breakout-levels-row b {
+  color: var(--text);
+  font-weight: 600;
+}
+.breakout-status {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #2962ff1a;
+  border: 1px solid #2962ff4d;
+  color: #82b1ff;
+  font-size: 11px;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.breakout-status.triggered {
+  background: #00c0761a;
+  border-color: #00c0764d;
+  color: #00c076;
+}
+.breakout-cancel-btn {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: #ef535026;
+  border: 1px solid #ef5350;
+  color: #ef5350;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ticket-submit.armed {
+  background: #f0b90b26;
+  border: 1px solid #f0b90b;
+  color: #f0b90b;
+}
