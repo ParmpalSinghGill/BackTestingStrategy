@@ -8,6 +8,7 @@ const REPLAY_STORAGE_KEY = "gc-chart-replay";
 const EVENTS_STORAGE_KEY = "gc-chart-events-on";
 const EVENT_LABELS_KEY = "gc-chart-event-labels";
 const EVENT_MIN_KEY = "gc-chart-event-min";
+const EVENT_MARKERS_KEY = "gc-chart-event-markers";
 const PAPER_ARROWS_KEY = "gc-chart-paper-arrows";
 const FOLLOW_STORAGE_KEY = "gc-chart-follow-head";
 // TradingView-style drawing palette: greyscale, then hues from light to dark.
@@ -195,6 +196,7 @@ let chartEventLabels = [];
 let eventsEnabled = false;
 let eventLabelsOn = false;
 let eventLabelCount = 1;
+let eventMarkersOn = false;
 let eventMinTf = "Hourly";
 try {
   eventsEnabled = localStorage.getItem(EVENTS_STORAGE_KEY) === "1";
@@ -218,6 +220,14 @@ try {
   }
 } catch {
   eventMinTf = "Hourly";
+}
+try {
+  const savedMarkers = localStorage.getItem(EVENT_MARKERS_KEY);
+  if (savedMarkers != null) {
+    eventMarkersOn = savedMarkers === "1" || savedMarkers === "true";
+  }
+} catch {
+  eventMarkersOn = false;
 }
 let eventsLoading = false;
 let paperArrowsOn = true;
@@ -945,6 +955,29 @@ function setEventLabelCount(value) {
   drawOverlay();
 }
 
+function saveEventMarkerPrefs() {
+  try {
+    localStorage.setItem(EVENT_MARKERS_KEY, eventMarkersOn ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncEventMarkerControls() {
+  const toggle = document.getElementById("event-markers-toggle");
+  if (toggle) {
+    toggle.disabled = !eventsEnabled || eventsLoading;
+    toggle.classList.toggle("active", eventsEnabled && eventMarkersOn && !eventsLoading);
+  }
+}
+
+function setEventMarkersEnabled(on) {
+  eventMarkersOn = Boolean(on);
+  saveEventMarkerPrefs();
+  syncEventMarkerControls();
+  syncEventMarkers();
+}
+
 function utcSessionDate(unix) {
   const date = new Date(Number(unix) * 1000);
   const year = date.getUTCFullYear();
@@ -1083,6 +1116,7 @@ function updateEventHud(evt = null) {
   const nextBtn = document.getElementById("event-next");
   syncEventScanUi();
   syncEventLabelControls();
+  syncEventMarkerControls();
   if (!eventsEnabled) {
     prevBtn.disabled = true;
     nextBtn.disabled = true;
@@ -1131,7 +1165,7 @@ function clearEventGuide() {
 }
 
 function showEventGuide(evt) {
-  if (!eventsEnabled || !evt || !isEventActive(evt, replayTime)) {
+  if (!eventsEnabled || !eventMarkersOn || !evt || !isEventActive(evt, replayTime)) {
     clearEventGuide();
     return;
   }
@@ -1250,27 +1284,31 @@ function drawPaperArrows() {
 function syncEventMarkers() {
   const markers = [];
   if (eventsEnabled && chartEvents.length && currentCandles.length) {
-    const byTime = new Map();
-    chartEvents.forEach((evt) => {
-      if (!eventPassesMin(evt)) return;
-      if (evt.time > replayTime) return;
-      const time = snapEventMarkerTime(evt.time);
-      if (time == null) return;
-      const prev = byTime.get(time);
-      if (!prev || evt.status === "TOUCH") byTime.set(time, evt);
-    });
-    byTime.forEach((evt, time) => {
-      const support = evt.type === "support";
-      markers.push({
-        time,
-        position: support ? "belowBar" : "aboveBar",
-        color: evt.status === "TOUCH" ? eventColor(evt) : "#2962ff",
-        shape: support ? "arrowUp" : "arrowDown",
-        text: evt.status === "TOUCH" ? "T" : "N",
+    if (eventMarkersOn) {
+      const byTime = new Map();
+      chartEvents.forEach((evt) => {
+        if (!eventPassesMin(evt)) return;
+        if (evt.time > replayTime) return;
+        const time = snapEventMarkerTime(evt.time);
+        if (time == null) return;
+        const prev = byTime.get(time);
+        if (!prev || evt.status === "TOUCH") byTime.set(time, evt);
       });
-    });
-    showEventGuide(eventAtOrBeforeReplay());
-  } else if (!eventsEnabled) {
+      byTime.forEach((evt, time) => {
+        const support = evt.type === "support";
+        markers.push({
+          time,
+          position: support ? "belowBar" : "aboveBar",
+          color: evt.status === "TOUCH" ? eventColor(evt) : "#2962ff",
+          shape: support ? "arrowUp" : "arrowDown",
+          text: evt.status === "TOUCH" ? "T" : "N",
+        });
+      });
+      showEventGuide(eventAtOrBeforeReplay());
+    } else {
+      clearEventGuide();
+    }
+  } else {
     clearEventGuide();
   }
   paperFillMarkers().forEach((marker) => markers.push(marker));
@@ -4975,6 +5013,10 @@ document.getElementById("event-labels-toggle").addEventListener("click", () => {
   if (!eventsEnabled) return;
   setEventLabelsEnabled(!eventLabelsOn);
 });
+document.getElementById("event-markers-toggle")?.addEventListener("click", () => {
+  if (!eventsEnabled) return;
+  setEventMarkersEnabled(!eventMarkersOn);
+});
 document.getElementById("event-label-count").addEventListener("input", (event) => {
   setEventLabelCount(event.target.value);
 });
@@ -5145,6 +5187,7 @@ document.getElementById("redo-drawing")?.addEventListener("click", redoDrawing);
 syncUndoButtons();
 setFollowHead(followHead, { snap: false });
 syncEventLabelControls();
+syncEventMarkerControls();
 document.getElementById("data-feed").addEventListener("change", (event) => {
   switchDataFeed(event.target.value);
 });

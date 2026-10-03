@@ -260,7 +260,8 @@ input[type="range"] {
 @keyframes events-spin {
   to { transform: rotate(360deg); }
 }
-#event-labels-toggle.active {
+#event-labels-toggle.active,
+#event-markers-toggle.active {
   color: #fff;
   background: #26a69a26;
   border-color: #26a69a;
