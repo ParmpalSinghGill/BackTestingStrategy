@@ -5484,6 +5484,8 @@ syncUndoButtons();
 setFollowHead(followHead, { snap: false });
 syncEventLabelControls();
 syncEventMarkerControls();
+togglePaperTpsl(false);
+toggleBreakoutMode(false);
 document.getElementById("data-feed").addEventListener("change", (event) => {
   switchDataFeed(event.target.value);
 });

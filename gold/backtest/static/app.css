@@ -1213,3 +1213,18 @@ button.danger:hover {
   border: 1px solid #f0b90b;
   color: #f0b90b;
 }
+
+
+[hidden] {
+  display: none !important;
+}
+.ticket-tpsl[hidden],
+#paper-tpsl[hidden],
+.ticket-breakout-wrap[hidden],
+#paper-breakout-wrap[hidden],
+.ticket-hint[hidden],
+#paper-place-hint[hidden],
+.breakout-status[hidden],
+#paper-breakout-status[hidden] {
+  display: none !important;
+}
