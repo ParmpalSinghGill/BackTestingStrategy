@@ -1219,6 +1219,7 @@ button.danger:hover {
   display: none !important;
 }
 .ticket-tpsl[hidden],
+#paper-mark-price-wrap[hidden],
 #paper-tpsl[hidden],
 .ticket-breakout-wrap[hidden],
 #paper-breakout-wrap[hidden],
